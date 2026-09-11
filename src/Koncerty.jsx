@@ -228,7 +228,7 @@ export default function Koncerty({ profile }) {
             const zapisani = zapisaniNaKoncert[koncert.id] || [];
             const isRozwiniete = rozwinieteSkłady[koncert.id];
 
-            // Filtrujemy tylko osoby, które zadeklarowały udział (planuje === true)
+            // Filtrujemy tylko osoby, które zadeklarowały udział (planuje === true) wg głównej sekcji
             const chętni = zapisani.filter(z => z.planuje === true);
             const balet = chętni.filter(z => z.sekcja === 'balet');
             const chor = chętni.filter(z => z.sekcja === 'chór');
@@ -328,10 +328,9 @@ export default function Koncerty({ profile }) {
                   {isRozwiniete && (
                     <div style={{ marginTop: '12px', padding: '15px', backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #cbd5e1', display: 'flex', flexDirection: 'column', gap: '15px' }}>
                       
-                      {/* Funkcja pomocnicza renderująca sekcję */}
-                      {renderujListeSekcji('🩰 Balet', balet, koncert.id, profile)}
-                      {renderujListeSekcji('🎤 Chór', chor, koncert.id, profile)}
-                      {renderujListeSekcji('🎻 Kapela', kapela, koncert.id, profile)}
+                      {renderujListeSekcji('🩰 Balet', balet, koncert.id, profile, zmienKwalifikacje)}
+                      {renderujListeSekcji('🎤 Chór', chor, koncert.id, profile, zmienKwalifikacje)}
+                      {renderujListeSekcji('🎻 Kapela', kapela, koncert.id, profile, zmienKwalifikacje)}
 
                     </div>
                   )}
@@ -346,10 +345,11 @@ export default function Koncerty({ profile }) {
   );
 }
 
-// Pomocnicza funkcja renderująca listę osób w danej sekcji z podziałem na zakwalifikowanych i rezerwę
-function renderujListeSekcji(tytulSekcji, listaOsob, koncertId, profile) {
+// Funkcja renderująca listę osób w danej sekcji z podziałem na zakwalifikowanych i rezerwę
+function renderujListeSekcji(tytulSekcji, listaOsob, koncertId, profile, naZmienKwalifikacje) {
   const zakwalifikowani = listaOsob.filter(o => o.zakwalifikowany === true);
   const rezerwa = listaOsob.filter(o => o.zakwalifikowany === false || o.zakwalifikowany === null);
+  const isKadra = profile.rola === 'kierownik' || profile.rola === 'pracownik';
 
   return (
     <div>
@@ -370,18 +370,16 @@ function renderujListeSekcji(tytulSekcji, listaOsob, koncertId, profile) {
             ) : (
               <ul style={{ margin: '4px 0 8px 15px', paddingLeft: '10px', fontSize: '13px', color: '#334155' }}>
                 {zakwalifikowani.map(osoba => (
-                  <li key={osoba.id_uzytkownika} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                  <li key={osoba.id_uzytkownika} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', padding: '4px 8px', backgroundColor: '#f0fdf4', borderRadius: '4px' }}>
                     <span>{osoba.imie_nazwisko} {osoba.id_uzytkownika === profile.id && '(Ty)'}</span>
                     
-                    {(profile.rola === 'kierownik' || profile.rola === 'pracownik') && (
-                      <div style={{ display: 'flex', gap: '5px' }}>
-                        <button 
-                          onClick={() => window.zmienKwalifikacjeGlobal(koncertId, osoba.id_uzytkownika, false)}
-                          style={{ padding: '2px 6px', backgroundColor: '#e2e8f0', color: '#334155', border: 'none', borderRadius: '4px', fontSize: '11px', cursor: 'pointer' }}
-                        >
-                          Na rezerwę ⏳
-                        </button>
-                      </div>
+                    {isKadra && (
+                      <button 
+                        onClick={() => naZmienKwalifikacje(koncertId, osoba.id_uzytkownika, false)}
+                        style={{ padding: '3px 8px', backgroundColor: '#fef3c7', color: '#92400e', border: 'none', borderRadius: '4px', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold' }}
+                      >
+                        Przenieś na rezerwę ⏳
+                      </button>
                     )}
                   </li>
                 ))}
@@ -389,7 +387,7 @@ function renderujListeSekcji(tytulSekcji, listaOsob, koncertId, profile) {
             )}
           </div>
 
-          {/* Lista rezerwowa / Niezakwalifikowani */}
+          {/* Lista rezerwowa / Oczekujący */}
           <div>
             <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#d97706' }}>⏳ Lista rezerwowa / Oczekujący ({rezerwa.length}):</span>
             {rezerwa.length === 0 ? (
@@ -397,18 +395,16 @@ function renderujListeSekcji(tytulSekcji, listaOsob, koncertId, profile) {
             ) : (
               <ul style={{ margin: '4px 0 0 15px', paddingLeft: '10px', fontSize: '13px', color: '#334155' }}>
                 {rezerwa.map(osoba => (
-                  <li key={osoba.id_uzytkownika} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                  <li key={osoba.id_uzytkownika} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', padding: '4px 8px', backgroundColor: '#fffbeb', borderRadius: '4px' }}>
                     <span>{osoba.imie_nazwisko} {osoba.id_uzytkownika === profile.id && '(Ty)'}</span>
                     
-                    {(profile.rola === 'kierownik' || profile.rola === 'pracownik') && (
-                      <div style={{ display: 'flex', gap: '5px' }}>
-                        <button 
-                          onClick={() => window.zmienKwalifikacjeGlobal(koncertId, osoba.id_uzytkownika, true)}
-                          style={{ padding: '2px 6px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '4px', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold' }}
-                        >
-                          Zakwalifikuj ✔️
-                        </button>
-                      </div>
+                    {isKadra && (
+                      <button 
+                        onClick={() => naZmienKwalifikacje(koncertId, osoba.id_uzytkownika, true)}
+                        style={{ padding: '3px 8px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '4px', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold' }}
+                      >
+                        Zakwalifikuj ✔️
+                      </button>
                     )}
                   </li>
                 ))}
@@ -421,5 +417,3 @@ function renderujListeSekcji(tytulSekcji, listaOsob, koncertId, profile) {
     </div>
   );
 }
-
-// Przypięcie funkcji do window, aby przyciski w renderujListeSekcji miały do niej łatwy dostęp
