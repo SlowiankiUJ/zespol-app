@@ -16,17 +16,26 @@ export default function Harmonogram({ profile }) {
   const [komunikat, setKomunikat] = useState('');
 
   useEffect(() => {
-    pobierzProby();
-    if (profile.rola === 'członek') {
-      pobierzMojeDeklaracje();
+    if (profile) {
+      pobierzProby();
+      if (profile.rola === 'członek') {
+        pobierzMojeDeklaracje();
+      }
     }
   }, [profile]);
 
   const pobierzProby = async () => {
-    const { data, error } = await supabase
+    let zapytanie = supabase
       .from('proby')
       .select('*')
       .order('data_czas', { ascending: true });
+
+    // Jeśli użytkownik jest członkiem, filtrujemy próby tylko do jego sekcji
+    if (profile && profile.rola === 'członek' && profile.sekcja) {
+      zapytanie = zapytanie.eq('sekcja', profile.sekcja);
+    }
+
+    const { data, error } = await zapytanie;
 
     if (!error && data) {
       setProby(data);
@@ -90,7 +99,6 @@ export default function Harmonogram({ profile }) {
 
   // Zgłoszenie obecności lub nieobecności przez członka
   const zaktualizujDeklaracje = async (probaId, statusPlanuje) => {
-    // Jeśli użytkownik zmienia na "będzie" (true), automatycznie czścimy usprawiedliwienie
     const noweUsprawiedliwienie = statusPlanuje === true ? null : (usprawiedliwienia[probaId] || null);
 
     const { error } = await supabase
@@ -181,9 +189,12 @@ export default function Harmonogram({ profile }) {
       )}
 
       {/* Lista Prób */}
-      <h3 style={{ fontSize: '16px', color: '#334155', marginBottom: '15px' }}>Nadchodzące i minione próby ({proby.length})</h3>
+      <h3 style={{ fontSize: '16px', color: '#334155', marginBottom: '15px' }}>
+        {profile.rola === 'członek' ? `Nadchodzące i minione próby dla sekcji: ${profile.sekcja} (${proby.length})` : `Wszystkie próby w zespole (${proby.length})`}
+      </h3>
+      
       {proby.length === 0 ? (
-        <p style={{ color: '#718096' }}>Brak zaplanowanych prób w systemie.</p>
+        <p style={{ color: '#718096' }}>Brak zaplanowanych prób dla Twojej sekcji.</p>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {proby.map(proba => {
@@ -278,7 +289,7 @@ export default function Harmonogram({ profile }) {
                       </div>
                     </div>
 
-                    {/* Dodatkowe okienko usprawiedliwienia, gdy członek zaznaczy, że go nie będzie */}
+                    {/* Dodatkowe okienko usprawiedliwienia */}
                     {deklaracjaUzytkownika === false && (
                       <div style={{ marginTop: '12px', padding: '12px', backgroundColor: '#fef2f2', borderRadius: '6px', border: '1px solid #fecaca' }}>
                         <p style={{ margin: '0 0 5px 0', fontSize: '13px', color: '#991b1b', fontWeight: '600' }}>
