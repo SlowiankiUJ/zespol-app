@@ -1,145 +1,170 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 
-export default function PodgladCzlonka() {
-  const [czlonkowie, setCzlonkowie] = useState([]);
-  const [wybranyUserId, setWybranyUserId] = useState('');
-  const [wybranyProfil, setWybranyProfil] = useState(null);
-  const [odbyteSprawdzoneProby, setOdbyteSprawdzoneProby] = useState([]);
-  const [obecnosciUsera, setObecnosciUsera] = useState([]);
-  const [ladowanie, setLadowanie] = useState(false);
+export default function PodgladCzlonka({ profile }) {
+  const [imieNazwisko, setImieNazwisko] = useState(profile?.imie_nazwisko || '');
+  const [sekcja, setSekcja] = useState(profile?.sekcja || 'balet');
+  
+  // Dodatkowe sekcje
+  const [dodatkowaSekcjaWybór, setDodatkowaSekcjaWybór] = useState('balet');
+  const [mojeDodatkoweSekcje, setMojeDodatkoweSekcje] = useState([]);
+
+  const [komunikat, setKomunikat] = useState('');
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    pobierzCzlonkow();
-  }, []);
+    if (profile) {
+      setImieNazwisko(profile.imie_nazwisko || '');
+      setSekcja(profile.sekcja || 'balet');
+      pobierzDodatkoweSekcje();
+    }
+  }, [profile]);
 
-  const pobierzCzlonkow = async () => {
-    const { data } = await supabase
-      .from('profiles')
+  const pobierzDodatkoweSekcje = async () => {
+    const { data, error } = await supabase
+      .from('dodatkowe_sekcje')
       .select('*')
-      .eq('rola', 'członek')
-      .eq('status', 'zatwierdzony')
-      .order('imie_nazwisko', { ascending: true });
+      .eq('id_uzytkownika', profile.id);
 
-    if (data) setCzlonkowie(data);
+    if (!error && data) {
+      setMojeDodatkoweSekcje(data);
+    }
   };
 
-  const wybierzOsobe = async (e) => {
-    const userId = e.target.value;
-    setWybranyUserId(userId);
+  const zaktualizujProfil = async (e) => {
+    e.preventDefault();
+    setLoading(true);
 
-    if (!userId) {
-      setWybranyProfil(null);
-      setOdbyteSprawdzoneProby([]);
-      setObecnosciUsera([]);
+    const { error } = await supabase
+      .from('profiles')
+      .update({ imie_nazwisko: imieNazwisko, sekcja: sekcja })
+      .eq('id', profile.id);
+
+    setLoading(false);
+
+    if (error) {
+      setKomunikat('Błąd: ' + error.message);
+    } else {
+      setKomunikat('Profil zaktualizowany pomyślnie! ✅');
+      setTimeout(() => setKomunikat(''), 3000);
+    }
+  };
+
+  const wyslijProsteDoSekcji = async (e) => {
+    e.preventDefault();
+    // Sprawdź czy to nie główna sekcja
+    if (dodatkowaSekcjaWybór === profile.sekcja) {
+      alert('To jest Twoja główna sekcja!');
       return;
     }
 
-    setLadowanie(true);
+    const { error } = await supabase
+      .from('dodatkowe_sekcje')
+      .insert([{ id_uzytkownika: profile.id, sekcja: dodatkowaSekcjaWybór, status: 'oczekujacy' }]);
 
-    const profil = czlonkowie.find(c => c.id === userId);
-    setWybranyProfil(profil);
-
-    const teraz = new Date().toISOString();
-
-    const { data: proby } = await supabase
-      .from('proby')
-      .select('*')
-      .eq('sekcja', profil.sekcja)
-      .lte('data_czas', teraz)
-      .order('data_czas', { ascending: false });
-
-    const { data: frek } = await supabase
-      .from('frekwencja')
-      .select('id_proby, obecny')
-      .eq('id_uzytkownika', userId);
-
-    if (proby && frek) {
-      const rozliczoneIds = frek.map(f => f.id_proby);
-      const ostateczneProby = proby.filter(p => rozliczoneIds.includes(p.id));
-      
-      setOdbyteSprawdzoneProby(ostateczneProby);
-
-      const obecneIds = frek.filter(f => f.obecny === true).map(f => f.id_proby);
-      setObecnosciUsera(obecneIds);
+    if (error) {
+      alert('Już wysłałeś prośbę do tej sekcji lub posiadasz do niej dostęp.');
+    } else {
+      alert('Prośba o dodanie do sekcji została wysłana do kierownictwa! ⏳');
+      pobierzDodatkoweSekcje();
     }
-
-    setLadowanie(false);
   };
 
-  const iloscProb = odbyteSprawdzoneProby.length;
-  const iloscObecnosci = odbyteSprawdzoneProby.filter(p => obecnosciUsera.includes(p.id)).length;
-  const procent = iloscProb > 0 ? Math.round((iloscObecnosci / iloscProb) * 100) : 0;
+  const usunDodatkowaSekcje = async (id) => {
+    if (!window.confirm('Czy na pewno chcesz zrezygnować z tej dodatkowej sekcji?')) return;
+
+    const { error } = await supabase.from('dodatkowe_sekcje').delete().eq('id', id);
+    if (!error) {
+      pobierzDodatkoweSekcje();
+    }
+  };
 
   return (
-    <div style={{ marginTop: '20px', padding: '25px', border: '1px solid #e2e8f0', borderRadius: '12px', backgroundColor: '#ffffff', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
-      <h3 style={{ margin: '0 0 5px 0', color: '#1e293b', fontSize: '18px' }}>Sprawdź frekwencję członka zespołu</h3>
-      <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '20px' }}>Zestawienie obliczane jest wyłącznie z minionych i sprawdzonych prób.</p>
+    <div style={{ marginTop: '20px', padding: '25px', border: '1px solid #e2e8f0', borderRadius: '12px', backgroundColor: '#ffffff', boxShadow: '0 4px 6px rgba(0,0,0,0.02)', maxWidth: '600px', marginLeft: 'auto', marginRight: 'auto' }}>
+      <h2 style={{ color: '#1e293b', marginBottom: '5px', fontSize: '20px' }}>Mój Profil</h2>
+      <p style={{ color: '#64748b', fontSize: '14px', marginBottom: '25px' }}>
+        Zarządzaj swoimi danymi oraz prośbami o dostęp do dodatkowych sekcji w zespole.
+      </p>
 
-      {/* Wyraźne pole wyboru z ciemnym tekstem i białym tłem */}
-      <select 
-        value={wybranyUserId} 
-        onChange={wybierzOsobe}
-        style={{ width: '100%', padding: '12px', fontSize: '15px', borderRadius: '8px', border: '1px solid #cbd5e1', marginBottom: '20px', backgroundColor: '#ffffff', color: '#000000', boxSizing: 'border-box' }}
-      >
-        <option value="">-- Wybierz członka zespołu --</option>
-        {czlonkowie.map(czlonek => (
-          <option key={czlonek.id} value={czlonek.id}>
-            {czlonek.imie_nazwisko} (Sekcja: {czlonek.sekcja})
-          </option>
-        ))}
-      </select>
+      {/* Status i dane */}
+      <div style={{ marginBottom: '25px', padding: '15px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
+        <p style={{ margin: '0 0 8px 0', fontSize: '14px', color: '#334155' }}>
+          <strong>Rola w systemie:</strong> <span style={{ textTransform: 'capitalize', color: '#8b5cf6', fontWeight: 'bold' }}>{profile.rola}</span>
+        </p>
+        <p style={{ margin: 0, fontSize: '14px', color: '#334155' }}>
+          <strong>Główna sekcja:</strong> <span style={{ textTransform: 'uppercase', color: '#3182ce', fontWeight: 'bold' }}>{profile.sekcja}</span>
+        </p>
+      </div>
 
-      {ladowanie && <p style={{ color: '#64748b' }}>Ładowanie danych...</p>}
-
-      {wybranyProfil && !ladowanie && (
-        <div style={{ backgroundColor: '#f8fafc', padding: '20px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-          <h4 style={{ margin: '0 0 15px 0', color: '#1e293b', fontSize: '16px' }}>
-            Statystyki dla: <strong>{wybranyProfil.imie_nazwisko}</strong> ({wybranyProfil.sekcja.toUpperCase()})
-          </h4>
-
-          {/* Kafelki ze statystykami */}
-          <div style={{ display: 'flex', gap: '20px', marginBottom: '20px', padding: '15px', backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
-            <div>
-              <span style={{ fontSize: '13px', color: '#64748b' }}>Obecności:</span>
-              <p style={{ margin: '2px 0 0 0', fontSize: '20px', fontWeight: 'bold', color: '#10b981' }}>{iloscObecnosci} / {iloscProb}</p>
-            </div>
-            <div>
-              <span style={{ fontSize: '13px', color: '#64748b' }}>Frekwencja:</span>
-              <p style={{ margin: '2px 0 0 0', fontSize: '20px', fontWeight: 'bold', color: '#3182ce' }}>{procent}%</p>
-            </div>
-          </div>
-
-          <h5 style={{ margin: '0 0 10px 0', color: '#475569', fontSize: '15px' }}>Rozliczona historia prób:</h5>
-          {iloscProb === 0 ? (
-            <p style={{ fontSize: '14px', color: '#94a3b8' }}>Brak zakończonych i sprawdzonych prób dla tej osoby.</p>
-          ) : (
-            <ul style={{ listStyle: 'none', padding: 0, margin: 0, maxHeight: '300px', overflowY: 'auto' }}>
-              {odbyteSprawdzoneProby.map(proba => {
-                const czyObecny = obecnosciUsera.includes(proba.id);
-                return (
-                  <li key={proba.id} style={{ padding: '12px 15px', backgroundColor: '#ffffff', marginBottom: '8px', borderRadius: '6px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <strong style={{ fontSize: '14px', color: '#1e293b' }}>{new Date(proba.data_czas).toLocaleString('pl-PL')}</strong>
-                      <p style={{ margin: '2px 0 0 0', fontSize: '13px', color: '#64748b' }}>{proba.opis_cwiczen}</p>
-                    </div>
-                    <span style={{ 
-                      padding: '4px 12px', 
-                      borderRadius: '15px', 
-                      fontSize: '12px', 
-                      fontWeight: '700',
-                      backgroundColor: czyObecny ? '#d1e7dd' : '#f8d7da',
-                      color: czyObecny ? '#0f5132' : '#842029'
-                    }}>
-                      {czyObecny ? 'Obecny ✅' : 'Nieobecny ❌'}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+      {/* Formularz edycji głównego profilu */}
+      <form onSubmit={zaktualizujProfil} style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginBottom: '30px' }}>
+        <div>
+          <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#334155', marginBottom: '5px' }}>Imię i nazwisko:</label>
+          <input 
+            type="text" 
+            value={imieNazwisko} 
+            onChange={(e) => setImieNazwisko(e.target.value)} 
+            required 
+            style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', boxSizing: 'border-box' }}
+          />
         </div>
+
+        <div>
+          <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#334155', marginBottom: '5px' }}>Główna sekcja:</label>
+          <select 
+            value={sekcja} 
+            onChange={(e) => setSekcja(e.target.value)} 
+            style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', boxSizing: 'border-box' }}
+          >
+            <option value="balet">Balet</option>
+            <option value="chór">Chór</option>
+            <option value="kapela">Kapela</option>
+          </select>
+        </div>
+
+        <button type="submit" disabled={loading} style={{ padding: '10px', backgroundColor: '#8b5cf6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}>
+          {loading ? 'Zapisywanie...' : 'Zapisz zmiany w profilu 💾'}
+        </button>
+      </form>
+
+      {komunikat && <p style={{ color: '#10b981', textAlign: 'center', fontWeight: '500' }}>{komunikat}</p>}
+
+      {/* Sekcja dodatkowych sekcji */}
+      <hr style={{ border: 'none', borderTop: '1px solid #e2e8f0', margin: '25px 0' }} />
+      <h3 style={{ fontSize: '16px', color: '#1e293b', marginBottom: '10px' }}>Dodatkowe sekcje (gościnne próby)</h3>
+      <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '15px' }}>
+        Chcesz chodzić na próby innej sekcji? Wyślij prośbę do kierownika.
+      </p>
+
+      {mojeDodatkoweSekcje.length > 0 && (
+        <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 20px 0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {mojeDodatkoweSekcje.map(ds => (
+            <li key={ds.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+              <span style={{ fontSize: '14px', textTransform: 'uppercase', fontWeight: '600', color: '#334155' }}>
+                {ds.sekcja} {ds.status === 'zatwierdzony' ? '🟢 (Zatwierdzono)' : '⏳ (Oczekuje na akceptację)'}
+              </span>
+              <button onClick={() => usunDodatkowaSekcje(ds.id)} style={{ padding: '4px 8px', backgroundColor: '#ef4444', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}>
+                Rezygnuj ❌
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
+
+      <form onSubmit={wyslijProsteDoSekcji} style={{ display: 'flex', gap: '10px' }}>
+        <select 
+          value={dodatkowaSekcjaWybór} 
+          onChange={(e) => setDodatkowaSekcjaWybór(e.target.value)} 
+          style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000' }}
+        >
+          <option value="balet">Balet</option>
+          <option value="chór">Chór</option>
+          <option value="kapela">Kapela</option>
+        </select>
+        <button type="submit" style={{ padding: '8px 14px', backgroundColor: '#3182ce', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '13px' }}>
+          Poproś o dostęp ➕
+        </button>
+      </form>
     </div>
   );
 }

@@ -25,20 +25,50 @@ export default function Harmonogram({ profile }) {
   }, [profile]);
 
   const pobierzProby = async () => {
-    let zapytanie = supabase
-      .from('proby')
-      .select('*')
-      .order('data_czas', { ascending: true });
+    let sekcjeDoPobrania = [];
 
-    // Jeśli użytkownik jest członkiem, filtrujemy próby tylko do jego sekcji
-    if (profile && profile.rola === 'członek' && profile.sekcja) {
-      zapytanie = zapytanie.eq('sekcja', profile.sekcja);
-    }
+    if (profile && profile.rola === 'członek') {
+      if (profile.sekcja) sekcjeDoPobrania.push(profile.sekcja);
 
-    const { data, error } = await zapytanie;
+      // Pobieramy także zatwierdzone dodatkowe sekcje użytkownika
+      const { data: dodatkowe } = await supabase
+        .from('dodatkowe_sekcje')
+        .select('sekcja')
+        .eq('id_uzytkownika', profile.id)
+        .eq('status', 'zatwierdzony');
 
-    if (!error && data) {
-      setProby(data);
+      if (dodatkowe) {
+        dodatkowe.forEach(d => {
+          if (!sekcjeDoPobrania.includes(d.sekcja)) {
+            sekcjeDoPobrania.push(d.sekcja);
+          }
+        });
+      }
+
+      if (sekcjeDoPobrania.length === 0) {
+        setProby([]);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('proby')
+        .select('*')
+        .in('sekcja', sekcjeDoPobrania)
+        .order('data_czas', { ascending: true });
+
+      if (!error && data) {
+        setProby(data);
+      }
+    } else {
+      // Kierownik/pracownik widzi wszystkie próby
+      const { data, error } = await supabase
+        .from('proby')
+        .select('*')
+        .order('data_czas', { ascending: true });
+
+      if (!error && data) {
+        setProby(data);
+      }
     }
   };
 
@@ -190,11 +220,11 @@ export default function Harmonogram({ profile }) {
 
       {/* Lista Prób */}
       <h3 style={{ fontSize: '16px', color: '#334155', marginBottom: '15px' }}>
-        {profile.rola === 'członek' ? `Nadchodzące i minione próby dla sekcji: ${profile.sekcja} (${proby.length})` : `Wszystkie próby w zespole (${proby.length})`}
+        {profile.rola === 'członek' ? `Nadchodzące i minione próby (główna i dodatkowe sekcje) (${proby.length})` : `Wszystkie próby w zespole (${proby.length})`}
       </h3>
       
       {proby.length === 0 ? (
-        <p style={{ color: '#718096' }}>Brak zaplanowanych prób dla Twojej sekcji.</p>
+        <p style={{ color: '#718096' }}>Brak zaplanowanych prób dla Twoich sekcji.</p>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {proby.map(proba => {
