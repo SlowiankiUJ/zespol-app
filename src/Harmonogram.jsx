@@ -3,11 +3,18 @@ import { supabase } from './supabaseClient';
 import { pobierzStylSekcji } from './kolory';
 import ListaObecnosci from './ListaObecnosci';
 
+// Formatowanie surowej daty z bazy do wyświetlania
 const formatujWyswietlanie = (isoStr) => {
   if (!isoStr) return '';
   const d = new Date(isoStr);
   return d.toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ', ' + d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
 };
+
+// Polskie nazwy miesięcy do grupowania
+const nazwyMiesiecy = [
+  'Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec', 
+  'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień'
+];
 
 export default function Harmonogram({ profile }) {
   const [proby, setProby] = useState([]);
@@ -15,6 +22,9 @@ export default function Harmonogram({ profile }) {
   const [usprawiedliwienia, setUsprawiedliwienia] = useState({});
   const [aktywneInputyUsprawiedliwienia, setAktywneInputyUsprawiedliwienia] = useState({});
   const [rozwinitaObecnosc, setRozwinitaObecnosc] = useState({});
+  
+  // Stan rozwijanych zakładek z miesiącami
+  const [rozwinieteMiesiace, setRozwinieteMiesiace] = useState({});
 
   const [dataProby, setDataProby] = useState('');
   const [godzinaProby, setGodzinaProby] = useState('18:00');
@@ -75,7 +85,7 @@ export default function Harmonogram({ profile }) {
     if (!dataProby) { alert('Wybierz datę z kalendarza.'); return; }
     setKomunikat('Dodawanie próby...');
 
-    const pelnaDataCzas = new Date(`${dataProby}T${godzinaProby}:00`).toISOString();
+    const pelnaDataCzas = `${dataProby}T${godzinaProby}:00`;
 
     const { error } = await supabase.from('proby').insert([{ data_czas: pelnaDataCzas, sekcja, opis_cwiczen: opisCwiczen }]);
     if (error) { setKomunikat('Błąd: ' + error.message); } else {
@@ -100,12 +110,12 @@ export default function Harmonogram({ profile }) {
 
     while (current <= end) {
       if (current.getDay() === targetDay) {
-        const [godz, min] = godzinaProbyCyklicznej.split(':');
-        const dataZGodzina = new Date(current);
-        dataZGodzina.setHours(parseInt(godz), parseInt(min), 0, 0);
-
+        const r = current.getFullYear();
+        const m = String(current.getMonth() + 1).padStart(2, '0');
+        const d = String(current.getDate()).padStart(2, '0');
+        
         wygenerowaneDaty.push({
-          data_czas: dataZGodzina.toISOString(),
+          data_czas: `${r}-${m}-${d}T${godzinaProbyCyklicznej}:00`,
           sekcja: sekcjaCykliczna,
           opis_cwiczen: opisCykliczny || 'Próba cykliczna'
         });
@@ -130,15 +140,8 @@ export default function Harmonogram({ profile }) {
   };
 
   const rozpocznijEdycje = (proba) => {
-    const d = new Date(proba.data_czas);
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    const hours = String(d.getHours()).padStart(2, '0');
-    const minutes = String(d.getMinutes()).padStart(2, '0');
-    
-    setEditDataProby(`${year}-${month}-${day}`);
-    setEditGodzinaProby(`${hours}:${minutes}`);
+    setEditDataProby(proba.data_czas.substring(0, 10));
+    setEditGodzinaProby(proba.data_czas.substring(11, 16));
     setEditSekcja(proba.sekcja);
     setEditOpisCwiczen(proba.opis_cwiczen || '');
     setEdycjaProbaId(proba.id);
@@ -149,7 +152,7 @@ export default function Harmonogram({ profile }) {
   const zapiszEdycje = async (probaId) => {
     if (!editDataProby || !editGodzinaProby) { alert('Uzupełnij datę i godzinę'); return; }
     
-    const pelnaDataCzas = new Date(`${editDataProby}T${editGodzinaProby}:00`).toISOString();
+    const pelnaDataCzas = `${editDataProby}T${editGodzinaProby}:00`;
 
     const { error } = await supabase.from('proby').update({
       data_czas: pelnaDataCzas, sekcja: editSekcja, opis_cwiczen: editOpisCwiczen
@@ -178,6 +181,33 @@ export default function Harmonogram({ profile }) {
     setRozwinitaObecnosc(prev => ({ ...prev, [probaId]: !prev[probaId] }));
   };
 
+  // -----------------------------------------------------------
+  // GRUPOWANIE PRÓB NA MIESIĄCE
+  // -----------------------------------------------------------
+  const aktualnaData = new Date();
+  const aktualnyKluczMiesiaca = `${aktualnaData.getFullYear()}-${String(aktualnaData.getMonth()).padStart(2, '0')}`;
+
+  const pogrupowaneProby = proby.reduce((akregator, proba) => {
+    const data = new Date(proba.data_czas);
+    const rok = data.getFullYear();
+    const miesiacIdx = data.getMonth();
+    const klucz = `${rok}-${String(miesiacIdx).padStart(2, '0')}`; // np. "2026-08"
+    const nazwaMiesiaca = `${nazwyMiesiecy[miesiacIdx]} ${rok}`;
+
+    if (!akregator[klucz]) {
+      akregator[klucz] = { nazwa: nazwaMiesiaca, proby: [] };
+    }
+    akregator[klucz].proby.push(proba);
+    return akregator;
+  }, {});
+
+  const przelaczZakladkeMiesiaca = (klucz) => {
+    setRozwinieteMiesiace(prev => {
+      const isCurrentlyOpen = prev[klucz] ?? (klucz === aktualnyKluczMiesiaca);
+      return { ...prev, [klucz]: !isCurrentlyOpen };
+    });
+  };
+
   const isKadra = profile.rola === 'kierownik' || profile.rola === 'pracownik';
 
   return (
@@ -191,7 +221,7 @@ export default function Harmonogram({ profile }) {
             <form onSubmit={dodajProbe} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <div style={{ flex: 2 }}>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#64748b', marginBottom: '3px' }}>Data (kliknij po kalendarz):</label>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#64748b', marginBottom: '3px' }}>Data:</label>
                   <input type="date" value={dataProby} onChange={(e) => setDataProby(e.target.value)} onClick={(e) => e.target.showPicker && e.target.showPicker()} required style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', cursor: 'pointer', fontSize: '14px' }} />
                 </div>
                 <div style={{ flex: 1 }}>
@@ -247,91 +277,117 @@ export default function Harmonogram({ profile }) {
       {komunikat && <p style={{ color: komunikat.includes('Błąd') ? '#dc3545' : 'green', marginBottom: '15px', fontWeight: '500' }}>{komunikat}</p>}
 
       <h3 style={{ fontSize: '16px', color: '#334155', marginBottom: '15px' }}>
-        {profile.rola === 'członek' ? `Nadchodzące i minione próby (${proby.length})` : `Wszystkie próby w zespole (${proby.length})`}
+        {profile.rola === 'członek' ? `Lista zaplanowanych prób (${proby.length})` : `Lista wszystkich prób (${proby.length})`}
       </h3>
       
-      {proby.length === 0 ? (
+      {Object.keys(pogrupowaneProby).length === 0 ? (
         <p style={{ color: '#718096' }}>Brak zaplanowanych prób.</p>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          {proby.map(proba => {
-            const stylSekcji = pobierzStylSekcji(proba.sekcja);
-            const deklaracjaUzytkownika = deklaracje[proba.id];
-            const czyEdytowana = edycjaProbaId === proba.id;
-            const isRozwinieta = rozwinitaObecnosc[proba.id];
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+          {/* Mapujemy po posortowanych kluczach miesięcy (od najstarszego do najnowszego) */}
+          {Object.keys(pogrupowaneProby).sort().map(kluczMiesiaca => {
+            const grupa = pogrupowaneProby[kluczMiesiaca];
+            
+            // Domyślnie rozwinięty jest tylko aktualny miesiąc (jeśli uż. nie kliknął inaczej)
+            const isRozwiniety = rozwinieteMiesiace[kluczMiesiaca] ?? (kluczMiesiaca === aktualnyKluczMiesiaca);
 
             return (
-              <div key={proba.id} style={{ 
-                borderLeft: `6px solid ${stylSekcji.glowny}`, padding: '20px', backgroundColor: stylSekcji.jasny, 
-                borderRadius: '8px', borderTop: `1px solid ${stylSekcji.border}`, borderRight: `1px solid ${stylSekcji.border}`, 
-                borderBottom: `1px solid ${stylSekcji.border}`, boxShadow: '0 2px 4px rgba(0,0,0,0.01)'
-              }}>
-                {czyEdytowana ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', backgroundColor: '#fff', padding: '15px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
-                    <h4 style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#1e293b' }}>Edycja próby:</h4>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <input type="date" value={editDataProby} onChange={(e) => setEditDataProby(e.target.value)} onClick={(e) => e.target.showPicker && e.target.showPicker()} style={{ flex: 1, padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '13px' }} />
-                      <input type="time" value={editGodzinaProby} onChange={(e) => setEditGodzinaProby(e.target.value)} onClick={(e) => e.target.showPicker && e.target.showPicker()} style={{ flex: 1, padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '13px' }} />
-                      <select value={editSekcja} onChange={(e) => setEditSekcja(e.target.value)} style={{ flex: 1, padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '13px' }}>
-                        <option value="balet">Balet</option><option value="chór">Chór</option><option value="kapela">Kapela</option>
-                      </select>
-                    </div>
-                    <textarea value={editOpisCwiczen} onChange={(e) => setEditOpisCwiczen(e.target.value)} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '13px' }} />
-                    <div style={{ display: 'flex', gap: '8px', marginTop: '5px' }}>
-                      <button onClick={() => zapiszEdycje(proba.id)} style={{ padding: '6px 14px', backgroundColor: '#10b981', color: '#fff', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Zapisz 💾</button>
-                      <button onClick={anulujEdycje} style={{ padding: '6px 14px', backgroundColor: '#94a3b8', color: '#fff', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Anuluj</button>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
-                      <div>
-                        <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold', backgroundColor: stylSekcji.glowny, color: 'white', marginBottom: '6px', textTransform: 'uppercase' }}>
-                          {proba.sekcja}
-                        </span>
-                        <h4 style={{ margin: '0 0 5px 0', color: '#1e293b', fontSize: '16px' }}>
-                          📅 {formatujWyswietlanie(proba.data_czas)}
-                        </h4>
-                      </div>
-                      {isKadra && (
-                        <div style={{ display: 'flex', gap: '6px' }}>
-                          <button onClick={() => przelaczObecnosc(proba.id)} style={{ padding: '5px 10px', backgroundColor: '#8b5cf6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
-                            {isRozwinieta ? 'Zwiń listę ▲' : 'Sprawdź obecność 📝'}
-                          </button>
-                          <button onClick={() => rozpocznijEdycje(proba)} style={{ padding: '5px 10px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>Edytuj ✏️</button>
-                          <button onClick={() => usunProbe(proba.id)} style={{ padding: '5px 10px', backgroundColor: '#ef4444', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>Usuń 🗑️</button>
-                        </div>
-                      )}
-                    </div>
+              <div key={kluczMiesiaca} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#f8fafc' }}>
+                
+                {/* Nagłówek Miesiąca (Klikalny) */}
+                <button 
+                  onClick={() => przelaczZakladkeMiesiaca(kluczMiesiaca)}
+                  style={{ width: '100%', padding: '15px 20px', backgroundColor: '#f1f5f9', border: 'none', borderBottom: isRozwiniety ? '1px solid #e2e8f0' : 'none', textAlign: 'left', fontWeight: 'bold', fontSize: '16px', color: '#1e293b', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                >
+                  <span>📅 {grupa.nazwa} <span style={{ color: '#64748b', fontSize: '14px', fontWeight: 'normal' }}>({grupa.proby.length} prób)</span></span>
+                  <span style={{ fontSize: '12px', color: '#64748b' }}>{isRozwiniety ? '▲ Zwiń' : '▼ Rozwiń'}</span>
+                </button>
 
-                    <p style={{ margin: '10px 0', fontSize: '14px', color: '#334155' }}>
-                      <strong>Program:</strong> {proba.opis_cwiczen}
-                    </p>
+                {/* Lista prób w danym miesiącu */}
+                {isRozwiniety && (
+                  <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '20px', backgroundColor: '#ffffff' }}>
+                    {grupa.proby.map(proba => {
+                      const stylSekcji = pobierzStylSekcji(proba.sekcja);
+                      const deklaracjaUzytkownika = deklaracje[proba.id];
+                      const czyEdytowana = edycjaProbaId === proba.id;
+                      const isRozwinietaDlaKadry = rozwinitaObecnosc[proba.id];
 
-                    {profile.rola === 'członek' && (
-                      <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
-                          <span style={{ fontSize: '14px', fontWeight: '600', color: '#1e293b' }}>Twoja deklaracja:</span>
-                          <div style={{ display: 'flex', gap: '8px' }}>
-                            <button onClick={() => zaktualizujDeklaracje(proba.id, true)} style={{ padding: '8px 14px', borderRadius: '20px', border: '1px solid', borderColor: deklaracjaUzytkownika === true ? '#10b981' : '#cbd5e1', backgroundColor: deklaracjaUzytkownika === true ? '#10b981' : '#f8fafc', color: deklaracjaUzytkownika === true ? '#ffffff' : '#475569', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}>Będę 👍</button>
-                            <button onClick={() => zaktualizujDeklaracje(proba.id, false)} style={{ padding: '8px 14px', borderRadius: '20px', border: '1px solid', borderColor: deklaracjaUzytkownika === false ? '#ef4444' : '#cbd5e1', backgroundColor: deklaracjaUzytkownika === false ? '#ef4444' : '#f8fafc', color: deklaracjaUzytkownika === false ? '#ffffff' : '#475569', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}>Nie będzie 👎</button>
-                          </div>
-                        </div>
-                        {deklaracjaUzytkownika === false && (
-                          <div style={{ marginTop: '12px', padding: '12px', backgroundColor: '#fef2f2', borderRadius: '6px', border: '1px solid #fecaca' }}>
-                            <p style={{ margin: '0 0 5px 0', fontSize: '13px', color: '#991b1b', fontWeight: '600' }}>Powód nieobecności:</p>
-                            <div style={{ display: 'flex', gap: '8px' }}>
-                              <input type="text" placeholder="np. Choroba" value={aktywneInputyUsprawiedliwienia[proba.id] || ''} onChange={(e) => setAktywneInputyUsprawiedliwienia({ ...aktywneInputyUsprawiedliwienia, [proba.id]: e.target.value })} style={{ flex: 1, padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '13px' }} />
-                              <button onClick={() => zapiszUsprawiedliwienie(proba.id)} style={{ padding: '8px 14px', backgroundColor: '#ef4444', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' }}>Zapisz</button>
+                      return (
+                        <div key={proba.id} style={{ 
+                          borderLeft: `6px solid ${stylSekcji.glowny}`, padding: '20px', backgroundColor: stylSekcji.jasny, 
+                          borderRadius: '8px', borderTop: `1px solid ${stylSekcji.border}`, borderRight: `1px solid ${stylSekcji.border}`, 
+                          borderBottom: `1px solid ${stylSekcji.border}`, boxShadow: '0 2px 4px rgba(0,0,0,0.01)'
+                        }}>
+                          {czyEdytowana ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', backgroundColor: '#fff', padding: '15px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
+                              <h4 style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#1e293b' }}>Edycja próby:</h4>
+                              <div style={{ display: 'flex', gap: '8px' }}>
+                                <input type="date" value={editDataProby} onChange={(e) => setEditDataProby(e.target.value)} onClick={(e) => e.target.showPicker && e.target.showPicker()} style={{ flex: 1, padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '13px' }} />
+                                <input type="time" value={editGodzinaProby} onChange={(e) => setEditGodzinaProby(e.target.value)} onClick={(e) => e.target.showPicker && e.target.showPicker()} style={{ flex: 1, padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '13px' }} />
+                                <select value={editSekcja} onChange={(e) => setEditSekcja(e.target.value)} style={{ flex: 1, padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '13px' }}>
+                                  <option value="balet">Balet</option><option value="chór">Chór</option><option value="kapela">Kapela</option>
+                                </select>
+                              </div>
+                              <textarea value={editOpisCwiczen} onChange={(e) => setEditOpisCwiczen(e.target.value)} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '13px' }} />
+                              <div style={{ display: 'flex', gap: '8px', marginTop: '5px' }}>
+                                <button onClick={() => zapiszEdycje(proba.id)} style={{ padding: '6px 14px', backgroundColor: '#10b981', color: '#fff', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Zapisz 💾</button>
+                                <button onClick={anulujEdycje} style={{ padding: '6px 14px', backgroundColor: '#94a3b8', color: '#fff', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Anuluj</button>
+                              </div>
                             </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    
-                    {/* Lista obecności wysuwa się po kliknięciu */}
-                    {isKadra && isRozwinieta && <ListaObecnosci probaId={proba.id} sekcja={proba.sekcja} />}
-                  </>
+                          ) : (
+                            <>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
+                                <div>
+                                  <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold', backgroundColor: stylSekcji.glowny, color: 'white', marginBottom: '6px', textTransform: 'uppercase' }}>
+                                    {proba.sekcja}
+                                  </span>
+                                  <h4 style={{ margin: '0 0 5px 0', color: '#1e293b', fontSize: '16px' }}>
+                                    📅 {formatujWyswietlanie(proba.data_czas)}
+                                  </h4>
+                                </div>
+                                {isKadra && (
+                                  <div style={{ display: 'flex', gap: '6px' }}>
+                                    <button onClick={() => przelaczObecnosc(proba.id)} style={{ padding: '5px 10px', backgroundColor: '#8b5cf6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
+                                      {isRozwinietaDlaKadry ? 'Zwiń listę ▲' : 'Sprawdź obecność 📝'}
+                                    </button>
+                                    <button onClick={() => rozpocznijEdycje(proba)} style={{ padding: '5px 10px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>Edytuj ✏️</button>
+                                    <button onClick={() => usunProbe(proba.id)} style={{ padding: '5px 10px', backgroundColor: '#ef4444', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>Usuń 🗑️</button>
+                                  </div>
+                                )}
+                              </div>
+
+                              <p style={{ margin: '10px 0', fontSize: '14px', color: '#334155' }}>
+                                <strong>Program:</strong> {proba.opis_cwiczen}
+                              </p>
+
+                              {profile.rola === 'członek' && (
+                                <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
+                                    <span style={{ fontSize: '14px', fontWeight: '600', color: '#1e293b' }}>Twoja deklaracja:</span>
+                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                      <button onClick={() => zaktualizujDeklaracje(proba.id, true)} style={{ padding: '8px 14px', borderRadius: '20px', border: '1px solid', borderColor: deklaracjaUzytkownika === true ? '#10b981' : '#cbd5e1', backgroundColor: deklaracjaUzytkownika === true ? '#10b981' : '#f8fafc', color: deklaracjaUzytkownika === true ? '#ffffff' : '#475569', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}>Będę 👍</button>
+                                      <button onClick={() => zaktualizujDeklaracje(proba.id, false)} style={{ padding: '8px 14px', borderRadius: '20px', border: '1px solid', borderColor: deklaracjaUzytkownika === false ? '#ef4444' : '#cbd5e1', backgroundColor: deklaracjaUzytkownika === false ? '#ef4444' : '#f8fafc', color: deklaracjaUzytkownika === false ? '#ffffff' : '#475569', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}>Nie będzie 👎</button>
+                                    </div>
+                                  </div>
+                                  {deklaracjaUzytkownika === false && (
+                                    <div style={{ marginTop: '12px', padding: '12px', backgroundColor: '#fef2f2', borderRadius: '6px', border: '1px solid #fecaca' }}>
+                                      <p style={{ margin: '0 0 5px 0', fontSize: '13px', color: '#991b1b', fontWeight: '600' }}>Powód nieobecności:</p>
+                                      <div style={{ display: 'flex', gap: '8px' }}>
+                                        <input type="text" placeholder="np. Choroba" value={aktywneInputyUsprawiedliwienia[proba.id] || ''} onChange={(e) => setAktywneInputyUsprawiedliwienia({ ...aktywneInputyUsprawiedliwienia, [proba.id]: e.target.value })} style={{ flex: 1, padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '13px' }} />
+                                        <button onClick={() => zapiszUsprawiedliwienie(proba.id)} style={{ padding: '8px 14px', backgroundColor: '#ef4444', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' }}>Zapisz</button>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                              
+                              {isKadra && isRozwinietaDlaKadry && <ListaObecnosci probaId={proba.id} sekcja={proba.sekcja} />}
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 )}
               </div>
             );
