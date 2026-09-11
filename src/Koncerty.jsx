@@ -11,9 +11,10 @@ export default function Koncerty({ profile }) {
   const [aktywnaPodzakladka, setAktywnaPodzakladka] = useState({});
   const [rozwinieteSkłady, setRozwinieteSkłady] = useState({});
 
-  // Formularz dodawania koncertu
+  // Formularz dodawania koncertu (Data + Godzina osobno)
   const [tytul, setTytuł] = useState('');
-  const [dataCzas, setDataCzas] = useState('');
+  const [dataKoncertu, setDataKoncertu] = useState('');
+  const [godzinaKoncertu, setGodzinaKoncertu] = useState('18:00');
   const [miejsce, setMiejsce] = useState('');
   const [programOpis, setProgramOpis] = useState('');
   const [komunikat, setKomunikat] = useState('');
@@ -141,10 +142,16 @@ export default function Koncerty({ profile }) {
 
   const dodajKoncert = async (e) => {
     e.preventDefault();
+    if (!dataKoncertu) {
+      alert('Wybierz datę koncertu z kalendarza.');
+      return;
+    }
+
     setKomunikat('Dodawanie koncertu...');
+    const pelnaDataCzas = `${dataKoncertu}T${godzinaKoncertu}:00`;
 
     const { error } = await supabase.from('koncerty').insert([
-      { tytul, data_czas: dataCzas, miejsce, program: programOpis }
+      { tytul, data_czas: pelnaDataCzas, miejsce, program: programOpis }
     ]);
 
     if (error) {
@@ -152,7 +159,7 @@ export default function Koncerty({ profile }) {
     } else {
       setKomunikat('Koncert dodany pomyślnie! ✅');
       setTytuł('');
-      setDataCzas('');
+      setDataKoncertu('');
       setMiejsce('');
       setProgramOpis('');
       pobierzKoncerty();
@@ -250,18 +257,36 @@ export default function Koncerty({ profile }) {
               value={tytul} 
               onChange={(e) => setTytuł(e.target.value)} 
               required 
-              style={{ padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000' }}
+              style={{ padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', fontSize: '14px' }}
             />
             
-            <div>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#64748b', marginBottom: '4px' }}>Data i godzina koncertu (kliknij, aby otworzyć kalendarz):</label>
-              <input 
-                type="datetime-local" 
-                value={dataCzas} 
-                onChange={(e) => setDataCzas(e.target.value)} 
-                required 
-                style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', boxSizing: 'border-box', cursor: 'pointer' }}
-              />
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <div style={{ flex: 2 }}>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#64748b', marginBottom: '3px' }}>
+                  Data koncertu (kliknij, by otworzyć kalendarz):
+                </label>
+                <input 
+                  type="date" 
+                  value={dataKoncertu} 
+                  onChange={(e) => setDataKoncertu(e.target.value)} 
+                  onClick={(e) => e.target.showPicker && e.target.showPicker()}
+                  required 
+                  style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', boxSizing: 'border-box', cursor: 'pointer', fontSize: '14px' }}
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#64748b', marginBottom: '3px' }}>
+                  Godzina:
+                </label>
+                <input 
+                  type="time" 
+                  value={godzinaKoncertu} 
+                  onChange={(e) => setGodzinaKoncertu(e.target.value)} 
+                  onClick={(e) => e.target.showPicker && e.target.showPicker()}
+                  required 
+                  style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', boxSizing: 'border-box', cursor: 'pointer', fontSize: '14px' }}
+                />
+              </div>
             </div>
 
             <input 
@@ -270,7 +295,7 @@ export default function Koncerty({ profile }) {
               value={miejsce} 
               onChange={(e) => setMiejsce(e.target.value)} 
               required 
-              style={{ padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000' }}
+              style={{ padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', fontSize: '14px' }}
             />
             <textarea 
               placeholder="Ogólny opis / uwagi do koncertu" 
@@ -278,7 +303,7 @@ export default function Koncerty({ profile }) {
               onChange={(e) => setProgramOpis(e.target.value)} 
               rows="2"
               required
-              style={{ padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000' }}
+              style={{ padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', fontSize: '14px' }}
             />
             <button type="submit" style={{ padding: '12px', backgroundColor: '#3182ce', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}>
               Dodaj koncert do kalendarza 🎫
@@ -603,7 +628,7 @@ function renderujListeOsobek(tytulSekcji, listaOsob, koncertId, profile, naZmien
                     {isKadra && (
                       <button 
                         onClick={() => naZmienKwalifikacje(koncertId, osoba.id_uzytkownika, true)}
-                        style={{ padding: '2px 6px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '4px', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold' }}
+                        style={{ padding: '3px 6px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '4px', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold' }}
                       >
                         Zakwalifikuj ✔️
                       </button>

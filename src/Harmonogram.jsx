@@ -7,19 +7,20 @@ export default function Harmonogram({ profile }) {
   const [proby, setProby] = useState([]);
   const [deklaracje, setDeklaracje] = useState({}); // id_proby -> true / false
   const [usprawiedliwienia, setUsprawiedliwienia] = useState({}); // id_proby -> tekst
-  const [aktywneInputyUsprawiedliwienia, setAktywneInputyUsprawiedliwienia] = useState({}); // id_proby -> tekst wpisywany w input
+  const [aktywneInputyUsprawiedliwienia, setAktywneInputyUsprawiedliwienia] = useState({}); // id_proby -> tekst
 
-  // Formularz dodawania pojedynczej próby (Tylko kierownik / pracownik)
-  const [dataCzas, setDataCzas] = useState('');
+  // Formularz pojedynczej próby (Data + Godzina osobno dla natywnego kalendarza)
+  const [dataProby, setDataProby] = useState('');
+  const [godzinaProby, setGodzinaProby] = useState('18:00');
   const [sekcja, setSekcja] = useState('balet');
   const [opisCwiczen, setOpisCwiczen] = useState('');
   const [komunikat, setKomunikat] = useState('');
 
-  // Formularz prób cyklicznych (Tylko kierownik / pracownik)
+  // Formularz prób cyklicznych
   const [dataOd, setDataOd] = useState('');
   const [dataDo, setDataDo] = useState('');
   const [wybranyDzieńTygodnia, setWybranyDzieńTygodnia] = useState('1'); // 1 = poniedziałek
-  const [godzinaProby, setGodzinaProby] = useState('18:00');
+  const [godzinaProbyCyklicznej, setGodzinaProbyCyklicznej] = useState('18:00');
   const [sekcjaCykliczna, setSekcjaCykliczna] = useState('balet');
   const [opisCykliczny, setOpisCykliczny] = useState('');
 
@@ -105,17 +106,23 @@ export default function Harmonogram({ profile }) {
 
   const dodajProbe = async (e) => {
     e.preventDefault();
+    if (!dataProby) {
+      alert('Wybierz datę z kalendarza.');
+      return;
+    }
+
     setKomunikat('Dodawanie próby...');
+    const pelnaDataCzas = `${dataProby}T${godzinaProby}:00`;
 
     const { error } = await supabase.from('proby').insert([
-      { data_czas: dataCzas, sekcja, opis_cwiczen: opisCwiczen }
+      { data_czas: pelnaDataCzas, sekcja, opis_cwiczen: opisCwiczen }
     ]);
 
     if (error) {
       setKomunikat('Błąd: ' + error.message);
     } else {
       setKomunikat('Próba dodana pomyślnie! ✅');
-      setDataCzas('');
+      setDataProby('');
       setOpisCwiczen('');
       pobierzProby();
       setTimeout(() => setKomunikat(''), 3000);
@@ -138,7 +145,7 @@ export default function Harmonogram({ profile }) {
 
     while (current <= end) {
       if (current.getDay() === targetDay) {
-        const [godz, min] = godzinaProby.split(':');
+        const [godz, min] = godzinaProbyCyklicznej.split(':');
         const dataZGodzina = new Date(current);
         dataZGodzina.setHours(parseInt(godz), parseInt(min), 0, 0);
 
@@ -172,13 +179,8 @@ export default function Harmonogram({ profile }) {
 
   const usunProbe = async (id) => {
     if (!window.confirm('Czy na pewno chcesz usunąć tę próbę?')) return;
-    
     const { error } = await supabase.from('proby').delete().eq('id', id);
-    if (error) {
-      alert('Błąd podczas usuwania: ' + error.message);
-    } else {
-      pobierzProby();
-    }
+    if (!error) pobierzProby();
   };
 
   const zaktualizujDeklaracje = async (probaId, statusPlanuje) => {
@@ -239,21 +241,40 @@ export default function Harmonogram({ profile }) {
           <div style={{ padding: '20px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
             <h3 style={{ margin: '0 0 15px 0', fontSize: '16px', color: '#334155' }}>Zaplanuj nową próbę</h3>
             <form onSubmit={dodajProbe} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#64748b', marginBottom: '4px' }}>Data i godzina próby (kliknij, aby otworzyć kalendarz):</label>
-                <input 
-                  type="datetime-local" 
-                  value={dataCzas} 
-                  onChange={(e) => setDataCzas(e.target.value)} 
-                  required 
-                  style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', boxSizing: 'border-box', cursor: 'pointer' }}
-                />
+              
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ flex: 2 }}>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#64748b', marginBottom: '3px' }}>
+                    Data (kliknij, by otworzyć kalendarz):
+                  </label>
+                  <input 
+                    type="date" 
+                    value={dataProby} 
+                    onChange={(e) => setDataProby(e.target.value)} 
+                    onClick={(e) => e.target.showPicker && e.target.showPicker()}
+                    required 
+                    style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', boxSizing: 'border-box', cursor: 'pointer', fontSize: '14px' }}
+                  />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#64748b', marginBottom: '3px' }}>
+                    Godzina:
+                  </label>
+                  <input 
+                    type="time" 
+                    value={godzinaProby} 
+                    onChange={(e) => setGodzinaProby(e.target.value)} 
+                    onClick={(e) => e.target.showPicker && e.target.showPicker()}
+                    required 
+                    style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', boxSizing: 'border-box', cursor: 'pointer', fontSize: '14px' }}
+                  />
+                </div>
               </div>
               
               <select 
                 value={sekcja} 
                 onChange={(e) => setSekcja(e.target.value)} 
-                style={{ padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000' }}
+                style={{ padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', fontSize: '14px' }}
               >
                 <option value="balet">Sekcja: Balet</option>
                 <option value="chór">Sekcja: Chór</option>
@@ -266,7 +287,7 @@ export default function Harmonogram({ profile }) {
                 onChange={(e) => setOpisCwiczen(e.target.value)} 
                 rows="3"
                 required
-                style={{ padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000' }}
+                style={{ padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', fontSize: '14px' }}
               />
               
               <button type="submit" style={{ padding: '12px', backgroundColor: '#3182ce', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}>
@@ -281,34 +302,36 @@ export default function Harmonogram({ profile }) {
             <form onSubmit={dodajProbyCykliczne} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: '#64748b', marginBottom: '2px' }}>Od daty:</label>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#64748b', marginBottom: '3px' }}>Od daty:</label>
                   <input 
                     type="date" 
                     value={dataOd} 
                     onChange={(e) => setDataOd(e.target.value)} 
+                    onClick={(e) => e.target.showPicker && e.target.showPicker()}
                     required 
-                    style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', fontSize: '12px', boxSizing: 'border-box', cursor: 'pointer' }}
+                    style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', fontSize: '13px', boxSizing: 'border-box', cursor: 'pointer' }}
                   />
                 </div>
                 <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: '#64748b', marginBottom: '2px' }}>Do daty:</label>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#64748b', marginBottom: '3px' }}>Do daty:</label>
                   <input 
                     type="date" 
                     value={dataDo} 
                     onChange={(e) => setDataDo(e.target.value)} 
+                    onClick={(e) => e.target.showPicker && e.target.showPicker()}
                     required 
-                    style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', fontSize: '12px', boxSizing: 'border-box', cursor: 'pointer' }}
+                    style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', fontSize: '13px', boxSizing: 'border-box', cursor: 'pointer' }}
                   />
                 </div>
               </div>
 
               <div style={{ display: 'flex', gap: '8px' }}>
                 <div style={{ flex: 2 }}>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: '#64748b', marginBottom: '2px' }}>Dzień tygodnia:</label>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#64748b', marginBottom: '3px' }}>Dzień tygodnia:</label>
                   <select 
                     value={wybranyDzieńTygodnia} 
                     onChange={(e) => setWybranyDzieńTygodnia(e.target.value)}
-                    style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', fontSize: '12px', boxSizing: 'border-box' }}
+                    style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', fontSize: '13px', boxSizing: 'border-box' }}
                   >
                     <option value="1">Poniedziałek</option>
                     <option value="2">Wtorek</option>
@@ -320,13 +343,14 @@ export default function Harmonogram({ profile }) {
                   </select>
                 </div>
                 <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: '#64748b', marginBottom: '2px' }}>Godzina:</label>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#64748b', marginBottom: '3px' }}>Godzina:</label>
                   <input 
                     type="time" 
-                    value={godzinaProby} 
-                    onChange={(e) => setGodzinaProby(e.target.value)} 
+                    value={godzinaProbyCyklicznej} 
+                    onChange={(e) => setGodzinaProbyCyklicznej(e.target.value)} 
+                    onClick={(e) => e.target.showPicker && e.target.showPicker()}
                     required 
-                    style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', fontSize: '12px', boxSizing: 'border-box' }}
+                    style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', fontSize: '13px', boxSizing: 'border-box', cursor: 'pointer' }}
                   />
                 </div>
               </div>
@@ -428,23 +452,32 @@ export default function Harmonogram({ profile }) {
                         <button 
                           onClick={() => zaktualizujDeklaracje(proba.id, true)}
                           style={{ 
-                            padding: '8px 14px', borderRadius: '20px', border: '1px solid',
+                            padding: '8px 14px', 
+                            borderRadius: '20px', 
+                            border: '1px solid',
                             borderColor: deklaracjaUzytkownika === true ? '#10b981' : '#cbd5e1',
                             backgroundColor: deklaracjaUzytkownika === true ? '#10b981' : '#f8fafc',
                             color: deklaracjaUzytkownika === true ? '#ffffff' : '#475569',
-                            cursor: 'pointer', fontWeight: 'bold', fontSize: '13px'
+                            cursor: 'pointer', 
+                            fontWeight: 'bold', 
+                            fontSize: '13px'
                           }}
                         >
                           Będę 👍
                         </button>
+
                         <button 
                           onClick={() => zaktualizujDeklaracje(proba.id, false)}
                           style={{ 
-                            padding: '8px 14px', borderRadius: '20px', border: '1px solid',
+                            padding: '8px 14px', 
+                            borderRadius: '20px', 
+                            border: '1px solid',
                             borderColor: deklaracjaUzytkownika === false ? '#ef4444' : '#cbd5e1',
                             backgroundColor: deklaracjaUzytkownika === false ? '#ef4444' : '#f8fafc',
                             color: deklaracjaUzytkownika === false ? '#ffffff' : '#475569',
-                            cursor: 'pointer', fontWeight: 'bold', fontSize: '13px'
+                            cursor: 'pointer', 
+                            fontWeight: 'bold', 
+                            fontSize: '13px'
                           }}
                         >
                           Nie będzie 👎
