@@ -3,7 +3,6 @@ import { supabase } from './supabaseClient';
 
 export default function PodgladCzlonka({ profile }) {
   const [imieNazwisko, setImieNazwisko] = useState(profile?.imie_nazwisko || '');
-  const [sekcja, setSekcja] = useState(profile?.sekcja || 'balet');
   
   // Dodatkowe sekcje
   const [dodatkowaSekcjaWybór, setDodatkowaSekcjaWybór] = useState('balet');
@@ -15,7 +14,6 @@ export default function PodgladCzlonka({ profile }) {
   useEffect(() => {
     if (profile) {
       setImieNazwisko(profile.imie_nazwisko || '');
-      setSekcja(profile.sekcja || 'balet');
       pobierzDodatkoweSekcje();
     }
   }, [profile]);
@@ -35,9 +33,10 @@ export default function PodgladCzlonka({ profile }) {
     e.preventDefault();
     setLoading(true);
 
+    // Aktualizujemy tylko imię i nazwisko (główna sekcja jest zablokowana do edycji przez członka)
     const { error } = await supabase
       .from('profiles')
-      .update({ imie_nazwisko: imieNazwisko, sekcja: sekcja })
+      .update({ imie_nazwisko: imieNazwisko })
       .eq('id', profile.id);
 
     setLoading(false);
@@ -52,7 +51,6 @@ export default function PodgladCzlonka({ profile }) {
 
   const wyslijProsteDoSekcji = async (e) => {
     e.preventDefault();
-    // Sprawdź czy to nie główna sekcja
     if (dodatkowaSekcjaWybór === profile.sekcja) {
       alert('To jest Twoja główna sekcja!');
       return;
@@ -86,17 +84,18 @@ export default function PodgladCzlonka({ profile }) {
         Zarządzaj swoimi danymi oraz prośbami o dostęp do dodatkowych sekcji w zespole.
       </p>
 
-      {/* Status i dane */}
+      {/* Status i dane (główna sekcja widoczna tylko do odczytu) */}
       <div style={{ marginBottom: '25px', padding: '15px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
         <p style={{ margin: '0 0 8px 0', fontSize: '14px', color: '#334155' }}>
           <strong>Rola w systemie:</strong> <span style={{ textTransform: 'capitalize', color: '#8b5cf6', fontWeight: 'bold' }}>{profile.rola}</span>
         </p>
         <p style={{ margin: 0, fontSize: '14px', color: '#334155' }}>
           <strong>Główna sekcja:</strong> <span style={{ textTransform: 'uppercase', color: '#3182ce', fontWeight: 'bold' }}>{profile.sekcja}</span>
+          <span style={{ display: 'block', fontSize: '11px', color: '#64748b', marginTop: '2px' }}>(Zmiana głównej sekcji możliwa tylko przez kierownictwo)</span>
         </p>
       </div>
 
-      {/* Formularz edycji głównego profilu */}
+      {/* Formularz edycji imienia i nazwiska */}
       <form onSubmit={zaktualizujProfil} style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginBottom: '30px' }}>
         <div>
           <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#334155', marginBottom: '5px' }}>Imię i nazwisko:</label>
@@ -107,19 +106,6 @@ export default function PodgladCzlonka({ profile }) {
             required 
             style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', boxSizing: 'border-box' }}
           />
-        </div>
-
-        <div>
-          <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#334155', marginBottom: '5px' }}>Główna sekcja:</label>
-          <select 
-            value={sekcja} 
-            onChange={(e) => setSekcja(e.target.value)} 
-            style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', boxSizing: 'border-box' }}
-          >
-            <option value="balet">Balet</option>
-            <option value="chór">Chór</option>
-            <option value="kapela">Kapela</option>
-          </select>
         </div>
 
         <button type="submit" disabled={loading} style={{ padding: '10px', backgroundColor: '#8b5cf6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}>

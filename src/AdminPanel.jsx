@@ -24,13 +24,30 @@ export default function AdminPanel() {
   };
 
   const fetchDodatkoweSekcje = async () => {
-    const { data, error } = await supabase
+    // Pobieramy dodatkowe sekcje oraz profile oddzielnie, aby uniknąć błędów łączenia kluczy obcych w Supabase
+    const { data: sekcjeData, error: sekcjeErr } = await supabase
       .from('dodatkowe_sekcje')
-      .select('*, profiles(imie_nazwisko)')
+      .select('*')
       .order('id', { ascending: false });
 
-    if (!error && data) {
-      setDodatkoweProśby(data);
+    const { data: profData } = await supabase
+      .from('profiles')
+      .select('id, imie_nazwisko');
+
+    if (!sekcjeErr && sekcjeData) {
+      const profMap = {};
+      if (profData) {
+        profData.forEach(p => {
+          profMap[p.id] = p.imie_nazwisko;
+        });
+      }
+
+      const połączone = sekcjeData.map(s => ({
+        ...s,
+        imie_nazwisko: profMap[s.id_uzytkownika] || 'Nieznany użytkownik'
+      }));
+
+      setDodatkoweProśby(połączone);
     }
   };
 
@@ -153,7 +170,7 @@ export default function AdminPanel() {
                 {dodatkoweProśby.map(dp => (
                   <tr key={dp.id}>
                     <td style={{ borderBottom: '1px solid #f1f5f9', padding: '8px', fontSize: '14px' }}>
-                      {dp.profiles?.imie_nazwisko || 'Nieznany użytkownik'}
+                      {dp.imie_nazwisko}
                     </td>
                     <td style={{ borderBottom: '1px solid #f1f5f9', padding: '8px', fontSize: '14px', textTransform: 'uppercase', fontWeight: '600' }}>
                       {dp.sekcja}
