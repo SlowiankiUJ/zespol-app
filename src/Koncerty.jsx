@@ -4,7 +4,7 @@ import { supabase } from './supabaseClient';
 export default function Koncerty({ profile }) {
   const [koncerty, setKoncerty] = useState([]);
   const [deklaracjeKoncertow, setDeklaracjeKoncertow] = useState({}); // id_koncertu -> true/false
-  const [zapisaniNaKoncert, setZapisaniNaKoncert] = useState({}); // id_koncertu -> [ { imie_nazwisko, sekcja, planuje } ]
+  const [zapisaniNaKoncert, setZapisaniNaKoncert] = useState({}); // id_koncertu -> [ { id, id_uzytkownika, imie_nazwisko, sekcja, planuje, zakwalifikowany } ]
   const [rozwinieteSkłady, setRozwinieteSkłady] = useState({}); // id_koncertu -> true/false
 
   // Formularz dodawania koncertu (Tylko kierownik / pracownik)
@@ -50,14 +50,13 @@ export default function Koncerty({ profile }) {
     }
   };
 
-  // Pobieramy deklaracje i łączymy je wyłącznie z główną sekcją profilu użytkownika
   const pobierzWszystkichZapisanych = async (listaKoncertow) => {
     const koncertIds = listaKoncertow.map(k => k.id);
     if (koncertIds.length === 0) return;
 
     const { data: dekData } = await supabase
       .from('deklaracje_koncerty')
-      .select('id_koncertu, id_uzytkownika, planuje')
+      .select('id, id_koncertu, id_uzytkownika, planuje, zakwalifikowany')
       .in('id_koncertu', koncertIds);
 
     const { data: profData } = await supabase
@@ -68,7 +67,7 @@ export default function Koncerty({ profile }) {
     if (dekData && profData) {
       const profileMap = {};
       profData.forEach(p => {
-        profileMap[p.id] = p; // p.sekcja to główna sekcja użytkownika
+        profileMap[p.id] = p;
       });
 
       const mapaZapisanych = {};
@@ -79,8 +78,11 @@ export default function Koncerty({ profile }) {
       dekData.forEach(d => {
         if (profileMap[d.id_uzytkownika]) {
           mapaZapisanych[d.id_koncertu].push({
-            ...profileMap[d.id_uzytkownika],
-            planuje: d.planuje
+            id: d.id,
+            id_uzytkownika: d.id_uzytkownika,
+            planuje: d.planuje,
+            zakwalifikowany: d.zakwalifikowany,
+            ...profileMap[d.id_uzytkownika]
           });
         }
       });
@@ -137,6 +139,21 @@ export default function Koncerty({ profile }) {
       pobierzKoncerty();
     } else {
       alert('Błąd zapisywania deklaracji: ' + error.message);
+    }
+  };
+
+  // Funkcja dla kadry do zmiany statusu kwalifikacji
+  const zmienKwalifikacje = async (koncertId, userId, statusZakwalifikowany) => {
+    const { error } = await supabase
+      .from('deklaracje_koncerty')
+      .update({ zakwalifikowany: statusZakwalifikowany })
+      .eq('id_koncertu', koncertId)
+      .eq('id_uzytkownika', userId);
+
+    if (!error) {
+      pobierzKoncerty();
+    } else {
+      alert('Błąd zmiany kwalifikacji: ' + error.message);
     }
   };
 
@@ -211,11 +228,11 @@ export default function Koncerty({ profile }) {
             const zapisani = zapisaniNaKoncert[koncert.id] || [];
             const isRozwiniete = rozwinieteSkłady[koncert.id];
 
-            // Grupowanie wyłącznie według GŁÓWNEJ sekcji użytkownika
-            const jedzacy = zapisani.filter(z => z.planuje === true);
-            const balet = jedzacy.filter(z => z.sekcja === 'balet');
-            const chor = jedzacy.filter(z => z.sekcja === 'chór');
-            const kapela = jedzacy.filter(z => z.sekcja === 'kapela');
+            // Filtrujemy tylko osoby, które zadeklarowały udział (planuje === true)
+            const chętni = zapisani.filter(z => z.planuje === true);
+            const balet = chętni.filter(z => z.sekcja === 'balet');
+            const chor = chętni.filter(z => z.sekcja === 'chór');
+            const kapela = chętni.filter(z => z.sekcja === 'kapela');
 
             return (
               <div key={koncert.id} style={{ 
@@ -299,65 +316,22 @@ export default function Koncerty({ profile }) {
                   </div>
                 )}
 
-                {/* Sekcja podglądu składu */}
+                {/* Sekcja podglądu składu i kwalifikacji */}
                 <div style={{ marginTop: '15px' }}>
                   <button 
                     onClick={() => przelaczRozwiniecieSkladu(koncert.id)}
                     style={{ padding: '8px 14px', backgroundColor: '#e2e8f0', color: '#334155', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '13px' }}
                   >
-                    {isRozwiniete ? 'Ukryj skład wyjazdowy ▲' : `Sprawdź skład wyjazdowy (${jedzacy.length} osób zapisanych) ▼`}
+                    {isRozwiniete ? 'Ukryj skład i kwalifikacje ▲' : `Sprawdź skład i kwalifikacje (${chętni.length} zgłoszonych) ▼`}
                   </button>
 
                   {isRozwiniete && (
                     <div style={{ marginTop: '12px', padding: '15px', backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #cbd5e1', display: 'flex', flexDirection: 'column', gap: '15px' }}>
                       
-                      {/* Balet */}
-                      <div>
-                        <h5 style={{ margin: '0 0 6px 0', fontSize: '14px', color: '#1e293b', borderBottom: '2px solid #3182ce', paddingBottom: '3px' }}>
-                          🩰 Balet ({balet.length})
-                        </h5>
-                        {balet.length === 0 ? (
-                          <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>Brak zapisanych osób</p>
-                        ) : (
-                          <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '13px', color: '#334155' }}>
-                            {balet.map(osoba => (
-                              <li key={osoba.id}>{osoba.imie_nazwisko} {osoba.id === profile.id && '(Ty)'}</li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
-
-                      {/* Chór */}
-                      <div>
-                        <h5 style={{ margin: '0 0 6px 0', fontSize: '14px', color: '#1e293b', borderBottom: '2px solid #d69e2e', paddingBottom: '3px' }}>
-                          🎤 Chór ({chor.length})
-                        </h5>
-                        {chor.length === 0 ? (
-                          <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>Brak zapisanych osób</p>
-                        ) : (
-                          <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '13px', color: '#334155' }}>
-                            {chor.map(osoba => (
-                              <li key={osoba.id}>{osoba.imie_nazwisko} {osoba.id === profile.id && '(Ty)'}</li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
-
-                      {/* Kapela */}
-                      <div>
-                        <h5 style={{ margin: '0 0 6px 0', fontSize: '14px', color: '#1e293b', borderBottom: '2px solid #38a169', paddingBottom: '3px' }}>
-                          🎻 Kapela ({kapela.length})
-                        </h5>
-                        {kapela.length === 0 ? (
-                          <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>Brak zapisanych osób</p>
-                        ) : (
-                          <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '13px', color: '#334155' }}>
-                            {kapela.map(osoba => (
-                              <li key={osoba.id}>{osoba.imie_nazwisko} {osoba.id === profile.id && '(Ty)'}</li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
+                      {/* Funkcja pomocnicza renderująca sekcję */}
+                      {renderujListeSekcji('🩰 Balet', balet, koncert.id, profile)}
+                      {renderujListeSekcji('🎤 Chór', chor, koncert.id, profile)}
+                      {renderujListeSekcji('🎻 Kapela', kapela, koncert.id, profile)}
 
                     </div>
                   )}
@@ -371,3 +345,81 @@ export default function Koncerty({ profile }) {
     </div>
   );
 }
+
+// Pomocnicza funkcja renderująca listę osób w danej sekcji z podziałem na zakwalifikowanych i rezerwę
+function renderujListeSekcji(tytulSekcji, listaOsob, koncertId, profile) {
+  const zakwalifikowani = listaOsob.filter(o => o.zakwalifikowany === true);
+  const rezerwa = listaOsob.filter(o => o.zakwalifikowany === false || o.zakwalifikowany === null);
+
+  return (
+    <div>
+      <h5 style={{ margin: '0 0 8px 0', fontSize: '14px', color: '#1e293b', borderBottom: '2px solid #cbd5e1', paddingBottom: '4px' }}>
+        {tytulSekcji} ({listaOsob.length} zgłoszonych)
+      </h5>
+
+      {listaOsob.length === 0 ? (
+        <p style={{ fontSize: '13px', color: '#94a3b8', margin: '0 0 10px 0' }}>Brak zgłoszeń w tej sekcji</p>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '8px' }}>
+          
+          {/* Zakwalifikowani */}
+          <div>
+            <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#10b981' }}>🟢 Zakwalifikowani ({zakwalifikowani.length}):</span>
+            {zakwalifikowani.length === 0 ? (
+              <p style={{ fontSize: '12px', color: '#94a3b8', margin: '2px 0 5px 10px' }}>Brak zakwalifikowanych osób</p>
+            ) : (
+              <ul style={{ margin: '4px 0 8px 15px', paddingLeft: '10px', fontSize: '13px', color: '#334155' }}>
+                {zakwalifikowani.map(osoba => (
+                  <li key={osoba.id_uzytkownika} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <span>{osoba.imie_nazwisko} {osoba.id_uzytkownika === profile.id && '(Ty)'}</span>
+                    
+                    {(profile.rola === 'kierownik' || profile.rola === 'pracownik') && (
+                      <div style={{ display: 'flex', gap: '5px' }}>
+                        <button 
+                          onClick={() => window.zmienKwalifikacjeGlobal(koncertId, osoba.id_uzytkownika, false)}
+                          style={{ padding: '2px 6px', backgroundColor: '#e2e8f0', color: '#334155', border: 'none', borderRadius: '4px', fontSize: '11px', cursor: 'pointer' }}
+                        >
+                          Na rezerwę ⏳
+                        </button>
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          {/* Lista rezerwowa / Niezakwalifikowani */}
+          <div>
+            <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#d97706' }}>⏳ Lista rezerwowa / Oczekujący ({rezerwa.length}):</span>
+            {rezerwa.length === 0 ? (
+              <p style={{ fontSize: '12px', color: '#94a3b8', margin: '2px 0 5px 10px' }}>Brak osób na rezerwie</p>
+            ) : (
+              <ul style={{ margin: '4px 0 0 15px', paddingLeft: '10px', fontSize: '13px', color: '#334155' }}>
+                {rezerwa.map(osoba => (
+                  <li key={osoba.id_uzytkownika} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <span>{osoba.imie_nazwisko} {osoba.id_uzytkownika === profile.id && '(Ty)'}</span>
+                    
+                    {(profile.rola === 'kierownik' || profile.rola === 'pracownik') && (
+                      <div style={{ display: 'flex', gap: '5px' }}>
+                        <button 
+                          onClick={() => window.zmienKwalifikacjeGlobal(koncertId, osoba.id_uzytkownika, true)}
+                          style={{ padding: '2px 6px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '4px', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold' }}
+                        >
+                          Zakwalifikuj ✔️
+                        </button>
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Przypięcie funkcji do window, aby przyciski w renderujListeSekcji miały do niej łatwy dostęp
