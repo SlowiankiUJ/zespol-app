@@ -3,14 +3,11 @@ import { supabase } from './supabaseClient';
 import { pobierzStylSekcji } from './kolory';
 import ListaObecnosci from './ListaObecnosci';
 
-// Funkcja wyciągająca wpisaną datę i godzinę bez żadnej konwersji stref czasowych
-const formatujDate = (dataString) => {
-  if (!dataString) return '';
-  const rok = dataString.substring(0, 4);
-  const mc = dataString.substring(5, 7);
-  const dzien = dataString.substring(8, 10);
-  const godzina = dataString.substring(11, 16);
-  return `${dzien}.${mc}.${rok}, ${godzina}`;
+// Automatyczne i bezbłędne formatowanie czasu lokalnego
+const formatujWyswietlanie = (isoStr) => {
+  if (!isoStr) return '';
+  const d = new Date(isoStr);
+  return d.toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ', ' + d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
 };
 
 export default function Harmonogram({ profile }) {
@@ -41,18 +38,14 @@ export default function Harmonogram({ profile }) {
   useEffect(() => {
     if (profile) {
       pobierzProby();
-      if (profile.rola === 'członek') {
-        pobierzMojeDeklaracje();
-      }
+      if (profile.rola === 'członek') pobierzMojeDeklaracje();
     }
   }, [profile]);
 
   const pobierzProby = async () => {
     let sekcjeDoPobrania = [];
-
     if (profile && profile.rola === 'członek') {
       if (profile.sekcja) sekcjeDoPobrania.push(profile.sekcja);
-
       const { data: dodatkowe } = await supabase.from('dodatkowe_sekcje').select('sekcja').eq('id_uzytkownika', profile.id).eq('status', 'zatwierdzony');
       if (dodatkowe) dodatkowe.forEach(d => { if (!sekcjeDoPobrania.includes(d.sekcja)) sekcjeDoPobrania.push(d.sekcja); });
 
@@ -82,8 +75,7 @@ export default function Harmonogram({ profile }) {
     if (!dataProby) { alert('Wybierz datę z kalendarza.'); return; }
     setKomunikat('Dodawanie próby...');
 
-    // Sklejamy datę i godzinę jako surowy tekst
-    const pelnaDataCzas = `${dataProby}T${godzinaProby}:00`;
+    const pelnaDataCzas = new Date(`${dataProby}T${godzinaProby}:00`).toISOString();
 
     const { error } = await supabase.from('proby').insert([{ data_czas: pelnaDataCzas, sekcja, opis_cwiczen: opisCwiczen }]);
     if (error) { setKomunikat('Błąd: ' + error.message); } else {
@@ -108,13 +100,12 @@ export default function Harmonogram({ profile }) {
 
     while (current <= end) {
       if (current.getDay() === targetDay) {
-        // Składamy datę tekstowo dla bazy danych
-        const r = current.getFullYear();
-        const m = String(current.getMonth() + 1).padStart(2, '0');
-        const d = String(current.getDate()).padStart(2, '0');
-        
+        const [godz, min] = godzinaProbyCyklicznej.split(':');
+        const dataZGodzina = new Date(current);
+        dataZGodzina.setHours(parseInt(godz), parseInt(min), 0, 0);
+
         wygenerowaneDaty.push({
-          data_czas: `${r}-${m}-${d}T${godzinaProbyCyklicznej}:00`,
+          data_czas: dataZGodzina.toISOString(),
           sekcja: sekcjaCykliczna,
           opis_cwiczen: opisCykliczny || 'Próba cykliczna'
         });
@@ -139,9 +130,15 @@ export default function Harmonogram({ profile }) {
   };
 
   const rozpocznijEdycje = (proba) => {
-    // Odczyt surowego tekstu, bez modyfikacji
-    setEditDataProby(proba.data_czas.substring(0, 10));
-    setEditGodzinaProby(proba.data_czas.substring(11, 16));
+    const d = new Date(proba.data_czas);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    
+    setEditDataProby(`${year}-${month}-${day}`);
+    setEditGodzinaProby(`${hours}:${minutes}`);
     setEditSekcja(proba.sekcja);
     setEditOpisCwiczen(proba.opis_cwiczen || '');
     setEdycjaProbaId(proba.id);
@@ -152,8 +149,7 @@ export default function Harmonogram({ profile }) {
   const zapiszEdycje = async (probaId) => {
     if (!editDataProby || !editGodzinaProby) { alert('Uzupełnij datę i godzinę'); return; }
     
-    // Zapis surowego tekstu
-    const pelnaDataCzas = `${editDataProby}T${editGodzinaProby}:00`;
+    const pelnaDataCzas = new Date(`${editDataProby}T${editGodzinaProby}:00`).toISOString();
 
     const { error } = await supabase.from('proby').update({
       data_czas: pelnaDataCzas, sekcja: editSekcja, opis_cwiczen: editOpisCwiczen
@@ -191,7 +187,7 @@ export default function Harmonogram({ profile }) {
             <form onSubmit={dodajProbe} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <div style={{ flex: 2 }}>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#64748b', marginBottom: '3px' }}>Data (kliknij po kalendarz):</label>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#64748b', marginBottom: '3px' }}>Data:</label>
                   <input type="date" value={dataProby} onChange={(e) => setDataProby(e.target.value)} onClick={(e) => e.target.showPicker && e.target.showPicker()} required style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', cursor: 'pointer', fontSize: '14px' }} />
                 </div>
                 <div style={{ flex: 1 }}>
@@ -289,7 +285,7 @@ export default function Harmonogram({ profile }) {
                           {proba.sekcja}
                         </span>
                         <h4 style={{ margin: '0 0 5px 0', color: '#1e293b', fontSize: '16px' }}>
-                          📅 {formatujDate(proba.data_czas)}
+                          📅 {formatujWyswietlanie(proba.data_czas)}
                         </h4>
                       </div>
                       {isKadra && (
