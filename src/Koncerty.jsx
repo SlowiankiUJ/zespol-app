@@ -4,7 +4,7 @@ import { supabase } from './supabaseClient';
 export default function Koncerty({ profile }) {
   const [koncerty, setKoncerty] = useState([]);
   const [deklaracjeKoncertow, setDeklaracjeKoncertow] = useState({}); // id_koncertu -> true/false
-  const [zapisaniNaKoncert, setZapisaniNaKoncert] = useState({}); // id_koncertu -> [ { imie_nazwisko, rola, sekcja, status_deklaracji } ]
+  const [zapisaniNaKoncert, setZapisaniNaKoncert] = useState({}); // id_koncertu -> [ { imie_nazwisko, rola, sekcja, planuje } ]
   const [rozwinieteSkłady, setRozwinieteSkłady] = useState({}); // id_koncertu -> true/false
 
   // Formularz dodawania koncertu (Tylko kierownik / pracownik)
@@ -55,13 +55,11 @@ export default function Koncerty({ profile }) {
     const koncertIds = listaKoncertow.map(k => k.id);
     if (koncertIds.length === 0) return;
 
-    // Pobieramy deklaracje dla koncertów
     const { data: dekData } = await supabase
       .from('deklaracje_koncerty')
       .select('id_koncertu, id_uzytkownika, planuje')
       .in('id_koncertu', koncertIds);
 
-    // Pobieramy profile wszystkich zatwierdzonych członków zespołu
     const { data: profData } = await supabase
       .from('profiles')
       .select('id, imie_nazwisko, sekcja, rola')
@@ -137,6 +135,8 @@ export default function Koncerty({ profile }) {
     if (!error) {
       setDeklaracjeKoncertow(prev => ({ ...prev, [koncertId]: statusPlanuje }));
       pobierzKoncerty(); // odświeżamy listy zapisanych
+    } else {
+      alert('Błąd zapisywania deklaracji: ' + error.message);
     }
   };
 
@@ -211,7 +211,7 @@ export default function Koncerty({ profile }) {
             const zapisani = zapisaniNaKoncert[koncert.id] || [];
             const isRozwiniete = rozwinieteSkłady[koncert.id];
 
-            // Grupowanie zapisanych osób według sekcji (dla tych, którzy zadeklarowali "Będę")
+            // Grupowanie zapisanych osób według sekcji (tylko ci, którzy zadeklarowali udział: planuje === true)
             const jedzacy = zapisani.filter(z => z.planuje === true);
             const balet = jedzacy.filter(z => z.sekcja === 'balet');
             const chor = jedzacy.filter(z => z.sekcja === 'chór');
@@ -303,7 +303,7 @@ export default function Koncerty({ profile }) {
                     onClick={() => przelaczRozwiniecieSkladu(koncert.id)}
                     style={{ padding: '8px 14px', backgroundColor: '#e2e8f0', color: '#334155', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '13px' }}
                   >
-                    {isRozwiniete ? 'Ukryj skład wyjazdowy ▲' : `Sprawdź skład wyjazdowy (${jedzacy.size || jedzacy.length} osób zapisanych) ▼`}
+                    {isRozwiniete ? 'Ukryj skład wyjazdowy ▲' : `Sprawdź skład wyjazdowy (${jedzacy.length} osób zapisanych) ▼`}
                   </button>
 
                   {isRozwiniete && (
@@ -344,7 +344,8 @@ export default function Koncerty({ profile }) {
                       {/* Kapela */}
                       <div>
                         <h5 style={{ margin: '0 0 6px 0', fontSize: '14px', color: '#1e293b', borderBottom: '2px solid #38a169', paddingBottom: '3px' }}>
-                          🎻 Kapela ({kapela.length})</h5>
+                          🎻 Kapela ({kapela.length})
+                        </h5>
                         {kapela.length === 0 ? (
                           <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>Brak zapisanych osób</p>
                         ) : (

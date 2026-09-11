@@ -4,8 +4,9 @@ import { pobierzStylSekcji } from './kolory';
 
 export default function PodgladObecnosciCzlonka({ profile }) {
   const [proby, setProby] = useState([]);
-  const [czlonkowieSekcji, setCzlonkowieSekcji] = useState([]);
-  const [deklaracje, setDeklaracje] = useState({});
+  const [czlonkowieGłówni, setCzlonkowieGłówni] = useState([]);
+  const [czlonkowieGoscinni, setCzlonkowieGoscinni] = useState([]);
+  const [deklaracje, setDeklaracje] = useState({}); // id_proby -> { id_uzytkownika: { planuje, usprawiedliwienie } }
 
   useEffect(() => {
     if (profile && profile.sekcja) {
@@ -14,6 +15,7 @@ export default function PodgladObecnosciCzlonka({ profile }) {
   }, [profile]);
 
   const pobierzDaneDlaSekcji = async () => {
+    // 1. Pobierz próby tylko dla sekcji członka
     const { data: probyData } = await supabase
       .from('proby')
       .select('*')
@@ -25,6 +27,7 @@ export default function PodgladObecnosciCzlonka({ profile }) {
       pobierzDeklaracjeIZasoby(probyData);
     }
 
+    // 2. Pobierz głównych członków z tej samej sekcji
     const { data: czlonkowieData } = await supabase
       .from('profiles')
       .select('*')
@@ -34,7 +37,30 @@ export default function PodgladObecnosciCzlonka({ profile }) {
       .order('imie_nazwisko', { ascending: true });
 
     if (czlonkowieData) {
-      setCzlonkowieSekcji(czlonkowieData);
+      setCzlonkowieGłówni(czlonkowieData);
+    }
+
+    // 3. Pobierz osoby z innych sekcji, które mają zatwierdzony gościnny dostęp do tej sekcji
+    const { data: dodatkoweData } = await supabase
+      .from('dodatkowe_sekcje')
+      .select('id_uzytkownika')
+      .eq('sekcja', profile.sekcja)
+      .eq('status', 'zatwierdzony');
+
+    if (dodatkoweData && dodatkoweData.length > 0) {
+      const ids = dodatkoweData.map(d => d.id_uzytkownika);
+      const { data: goscieData } = await supabase
+        .from('profiles')
+        .select('*')
+        .in('id', ids)
+        .eq('status', 'zatwierdzony')
+        .order('imie_nazwisko', { ascending: true });
+
+      if (goscieData) {
+        setCzlonkowieGoscinni(goscieData);
+      }
+    } else {
+      setCzlonkowieGoscinni([]);
     }
   };
 
@@ -58,6 +84,24 @@ export default function PodgladObecnosciCzlonka({ profile }) {
       });
     }
     setDeklaracje(mapa);
+  };
+
+  const renderujListeOsob = (lista, naglowek) => {
+    if (lista.length === 0) return null;
+
+    return (
+      <div style={{ marginTop: '15px' }}>
+        <h6 style={{ margin: '0 0 8px 0', fontSize: '13px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+          {naglowek}
+        </h6>
+        <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {lista.map(czlonek => {
+            const deklaracjeTejProby = deklaracje[activeProbaId] || {}; // uwaga: zmienna pomocnicza w mapowaniu niżej
+            // w pętli prób przekazujemy konkretną próbę, więc zrobimy to elegancko poniżej
+          })}
+        </ul>
+      </div>
+    );
   };
 
   return (
@@ -96,11 +140,11 @@ export default function PodgladObecnosciCzlonka({ profile }) {
                 <div style={{ backgroundColor: '#ffffff', padding: '15px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
                   <h5 style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#1e293b' }}>Lista obecności sekcji:</h5>
 
-                  {czlonkowieSekcji.length === 0 ? (
-                    <p style={{ fontSize: '13px', color: '#718096' }}>Brak innych członków w tej sekcji.</p>
-                  ) : (
+                  {/* Główni członkowie */}
+                  <div style={{ marginBottom: czlonkowieGoscinni.length > 0 ? '15px' : '0' }}>
+                    <p style={{ fontSize: '12px', fontWeight: 'bold', color: '#64748b', margin: '0 0 5px 0', textTransform: 'uppercase' }}>Członkowie stałi:</p>
                     <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      {czlonkowieSekcji.map(czlonek => {
+                      {czlonkowieGłówni.map(czlonek => {
                         const info = deklaracjeTejProby[czlonek.id];
                         const statusPlanuje = info ? info.planuje : undefined;
                         const usprawiedliwienie = info ? info.usprawiedliwienie : null;
@@ -110,34 +154,58 @@ export default function PodgladObecnosciCzlonka({ profile }) {
                             <span style={{ fontSize: '14px', fontWeight: '500', color: '#1e293b' }}>
                               {czlonek.imie_nazwisko} {czlonek.id === profile.id && '(Ty)'}
                             </span>
-
                             <div>
                               {statusPlanuje === true ? (
-                                <span style={{ color: '#10b981', fontWeight: 'bold', fontSize: '13px', backgroundColor: '#d1fae5', padding: '3px 10px', borderRadius: '12px' }}>
-                                  Będzie 👍
-                                </span>
+                                <span style={{ color: '#10b981', fontWeight: 'bold', fontSize: '13px', backgroundColor: '#d1fae5', padding: '3px 10px', borderRadius: '12px' }}>Będzie 👍</span>
                               ) : statusPlanuje === false ? (
                                 <div style={{ textAlign: 'right' }}>
-                                  <span style={{ color: '#ef4444', fontWeight: 'bold', fontSize: '13px', backgroundColor: '#fee2e2', padding: '3px 10px', borderRadius: '12px', display: 'inline-block' }}>
-                                    Nie będzie 👎
-                                  </span>
-                                  {usprawiedliwienie && (
-                                    <div style={{ fontSize: '11px', color: '#b91c1c', fontStyle: 'italic', marginTop: '3px' }}>
-                                      Powód: „{usprawiedliwienie}”
-                                    </div>
-                                  )}
+                                  <span style={{ color: '#ef4444', fontWeight: 'bold', fontSize: '13px', backgroundColor: '#fee2e2', padding: '3px 10px', borderRadius: '12px', display: 'inline-block' }}>Nie będzie 👎</span>
+                                  {usprawiedliwienie && <div style={{ fontSize: '11px', color: '#b91c1c', fontStyle: 'italic', marginTop: '3px' }}>Powód: „{usprawiedliwienie}”</div>}
                                 </div>
                               ) : (
-                                <span style={{ color: '#94a3b8', fontSize: '13px' }}>
-                                  Brak deklaracji ⚪
-                                </span>
+                                <span style={{ color: '#94a3b8', fontSize: '13px' }}>Brak deklaracji ⚪</span>
                               )}
                             </div>
                           </li>
                         );
                       })}
                     </ul>
+                  </div>
+
+                  {/* Gościnni członkowie (na samym dole) */}
+                  {czlonkowieGoscinni.length > 0 && (
+                    <div>
+                      <p style={{ fontSize: '12px', fontWeight: 'bold', color: '#8b5cf6', margin: '15px 0 5px 0', textTransform: 'uppercase' }}>Członkowie gościnni (dodatkowa sekcja):</p>
+                      <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {czlonkowieGoscinni.map(gosc => {
+                          const info = deklaracjeTejProby[gosc.id];
+                          const statusPlanuje = info ? info.planuje : undefined;
+                          const usprawiedliwienie = info ? info.usprawiedliwienie : null;
+
+                          return (
+                            <li key={gosc.id} style={{ padding: '8px 12px', backgroundColor: '#faf5ff', borderRadius: '6px', border: '1px solid #f3e8ff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                              <span style={{ fontSize: '14px', fontWeight: '500', color: '#1e293b' }}>
+                                {gosc.imie_nazwisko} <span style={{ fontSize: '12px', color: '#8b5cf6', fontWeight: '600' }}>(Gościnnie z: {gosc.sekcja})</span> {gosc.id === profile.id && '(Ty)'}
+                              </span>
+                              <div>
+                                {statusPlanuje === true ? (
+                                  <span style={{ color: '#10b981', fontWeight: 'bold', fontSize: '13px', backgroundColor: '#d1fae5', padding: '3px 10px', borderRadius: '12px' }}>Będzie 👍</span>
+                                ) : statusPlanuje === false ? (
+                                  <div style={{ textAlign: 'right' }}>
+                                    <span style={{ color: '#ef4444', fontWeight: 'bold', fontSize: '13px', backgroundColor: '#fee2e2', padding: '3px 10px', borderRadius: '12px', display: 'inline-block' }}>Nie będzie 👎</span>
+                                    {usprawiedliwienie && <div style={{ fontSize: '11px', color: '#b91c1c', fontStyle: 'italic', marginTop: '3px' }}>Powód: „{usprawiedliwienie}”</div>}
+                                  </div>
+                                ) : (
+                                  <span style={{ color: '#94a3b8', fontSize: '13px' }}>Brak deklaracji ⚪</span>
+                                )}
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
                   )}
+
                 </div>
 
               </div>
