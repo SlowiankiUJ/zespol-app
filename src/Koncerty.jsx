@@ -4,7 +4,7 @@ import { supabase } from './supabaseClient';
 export default function Koncerty({ profile }) {
   const [koncerty, setKoncerty] = useState([]);
   const [deklaracjeKoncertow, setDeklaracjeKoncertow] = useState({}); // id_koncertu -> true/false
-  const [zapisaniNaKoncert, setZapisaniNaKoncert] = useState({}); // id_koncertu -> [ { imie_nazwisko, rola, sekcja, planuje } ]
+  const [zapisaniNaKoncert, setZapisaniNaKoncert] = useState({}); // id_koncertu -> [ { imie_nazwisko, sekcja, planuje } ]
   const [rozwinieteSkłady, setRozwinieteSkłady] = useState({}); // id_koncertu -> true/false
 
   // Formularz dodawania koncertu (Tylko kierownik / pracownik)
@@ -50,7 +50,7 @@ export default function Koncerty({ profile }) {
     }
   };
 
-  // Pobieramy deklaracje i łączymy je z profilami, żeby znać sekcję każdej osoby
+  // Pobieramy deklaracje i łączymy je wyłącznie z główną sekcją profilu użytkownika
   const pobierzWszystkichZapisanych = async (listaKoncertow) => {
     const koncertIds = listaKoncertow.map(k => k.id);
     if (koncertIds.length === 0) return;
@@ -62,13 +62,13 @@ export default function Koncerty({ profile }) {
 
     const { data: profData } = await supabase
       .from('profiles')
-      .select('id, imie_nazwisko, sekcja, rola')
+      .select('id, imie_nazwisko, sekcja')
       .eq('status', 'zatwierdzony');
 
     if (dekData && profData) {
       const profileMap = {};
       profData.forEach(p => {
-        profileMap[p.id] = p;
+        profileMap[p.id] = p; // p.sekcja to główna sekcja użytkownika
       });
 
       const mapaZapisanych = {};
@@ -134,7 +134,7 @@ export default function Koncerty({ profile }) {
 
     if (!error) {
       setDeklaracjeKoncertow(prev => ({ ...prev, [koncertId]: statusPlanuje }));
-      pobierzKoncerty(); // odświeżamy listy zapisanych
+      pobierzKoncerty();
     } else {
       alert('Błąd zapisywania deklaracji: ' + error.message);
     }
@@ -211,7 +211,7 @@ export default function Koncerty({ profile }) {
             const zapisani = zapisaniNaKoncert[koncert.id] || [];
             const isRozwiniete = rozwinieteSkłady[koncert.id];
 
-            // Grupowanie zapisanych osób według sekcji (tylko ci, którzy zadeklarowali udział: planuje === true)
+            // Grupowanie wyłącznie według GŁÓWNEJ sekcji użytkownika
             const jedzacy = zapisani.filter(z => z.planuje === true);
             const balet = jedzacy.filter(z => z.sekcja === 'balet');
             const chor = jedzacy.filter(z => z.sekcja === 'chór');
@@ -256,7 +256,9 @@ export default function Koncerty({ profile }) {
                 {profile.rola === 'członek' && (
                   <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
-                      <span style={{ fontSize: '14px', fontWeight: '600', color: '#1e293b' }}>Czy weźmiesz udział w koncercie?</span>
+                      <span style={{ fontSize: '14px', fontWeight: '600', color: '#1e293b' }}>
+                        Deklaracja udziału (Sekcja: <strong style={{ textTransform: 'uppercase' }}>{profile.sekcja}</strong>):
+                      </span>
                       
                       <div style={{ display: 'flex', gap: '8px' }}>
                         <button 
@@ -297,7 +299,7 @@ export default function Koncerty({ profile }) {
                   </div>
                 )}
 
-                {/* Sekcja podglądu składu (dostępna dla każdego: członków i kadry) */}
+                {/* Sekcja podglądu składu */}
                 <div style={{ marginTop: '15px' }}>
                   <button 
                     onClick={() => przelaczRozwiniecieSkladu(koncert.id)}
