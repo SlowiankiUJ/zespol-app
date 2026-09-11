@@ -9,6 +9,23 @@ export default function ZarzadzanieCzlonkami() {
 
   useEffect(() => {
     pobierzCzlonkowIDane();
+
+    // SUPABASE REALTIME: Nasłuchiwanie na żywo w tabeli głównej
+    const subscription = supabase
+      .channel('zmiany_obecnosci_lista')
+      .on(
+        'postgres_changes', 
+        { event: '*', schema: 'public', table: 'deklaracje_obecnosci' }, 
+        (payload) => {
+          // Aktualizuje tylko statystyki, by nie psuć widoku jeśli np. przewijasz listę
+          pobierzSameStatystyki(); 
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(subscription);
+    };
   }, []);
 
   const pobierzCzlonkowIDane = async () => {
@@ -25,8 +42,15 @@ export default function ZarzadzanieCzlonkami() {
     }
   };
 
+  const pobierzSameStatystyki = async () => {
+    // Szybkie pobranie statystyk dla real-time (korzysta ze starego stanu czlonkowie, by działać szybciej)
+    setCzlonkowie(aktualniCzlonkowie => {
+      if(aktualniCzlonkowie.length > 0) pobierzStatystykiFrekwencji(aktualniCzlonkowie);
+      return aktualniCzlonkowie;
+    });
+  };
+
   const pobierzStatystykiFrekwencji = async (listaCzlonkow) => {
-    // LICZYMY FREKWENCJĘ TYLKO Z FAKTYCZNEJ OBECNOŚCI
     const { data: dekData } = await supabase.from('deklaracje_obecnosci').select('id_uzytkownika, obecny');
     const staty = {};
     listaCzlonkow.forEach(c => { staty[c.id] = { obecny: 0, nieobecny: 0, total: 0 }; });
@@ -67,7 +91,6 @@ export default function ZarzadzanieCzlonkami() {
       
       {komunikat && <p style={{ color: '#10b981', fontWeight: '600', marginBottom: '15px' }}>{komunikat}</p>}
 
-      {/* WIDOK TOP FREKWENCJI (KADRA) */}
       <TopFrekwencja />
 
       <h3 style={{ margin: '0 0 15px 0', fontSize: '18px', color: '#1e293b' }}>Pełna lista członków i statystyki:</h3>
@@ -91,7 +114,7 @@ export default function ZarzadzanieCzlonkami() {
                 const procent = stat.total > 0 ? Math.round((stat.obecny / stat.total) * 100) : 0;
 
                 return (
-                  <tr key={czlonek.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                  <tr key={czlonek.id} style={{ borderBottom: '1px solid #f1f5f9', transition: 'background-color 0.3s' }}>
                     <td style={{ padding: '12px', fontSize: '14px', fontWeight: '500', color: '#1e293b' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#e2e8f0', overflow: 'hidden', display: 'flex', justifyContent: 'center', alignItems: 'center', flexShrink: 0 }}>
@@ -118,7 +141,9 @@ export default function ZarzadzanieCzlonkami() {
                       {stat.total === 0 ? (
                         <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>Brak wpisów</span>
                       ) : (
-                        <>🟢 {stat.obecny} | 🔴 {stat.nieobecny} ({procent}%)</>
+                        <span style={{ padding: '4px 8px', borderRadius: '12px', backgroundColor: '#f1f5f9', fontWeight: '600' }}>
+                          🟢 {stat.obecny} | 🔴 {stat.nieobecny} <span style={{ color: '#8b5cf6', marginLeft: '6px' }}>({procent}%)</span>
+                        </span>
                       )}
                     </td>
                     <td style={{ padding: '12px', fontSize: '14px' }}>
