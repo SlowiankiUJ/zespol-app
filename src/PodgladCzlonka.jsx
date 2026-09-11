@@ -55,24 +55,39 @@ export default function PodgladCzlonka({ profile }) {
       return;
     }
 
+    // Sprawdzamy najpierw czy wpis już istnieje lokalnie
+    const juzIstnieje = mojeDodatkoweSekcje.some(ds => ds.sekcja === dodatkowaSekcjaWybór);
+    if (juzIstnieje) {
+      alert('Masz już wysłaną prośbę lub dostęp do tej sekcji.');
+      return;
+    }
+
     const { error } = await supabase
       .from('dodatkowe_sekcje')
-      .insert([{ id_uzytkownika: profile.id, sekcja: dodatkowaSekcjaWybór, status: 'oczekujacy' }]);
+      .insert([
+        { 
+          id_uzytkownika: profile.id, 
+          sekcja: dodatkowaSekcjaWybór, 
+          status: 'oczekujacy' 
+        }
+      ]);
 
     if (error) {
-      alert('Już wysłałeś prośbę do tej sekcji lub posiadasz do niej dostęp.');
+      alert('Błąd bazy danych: ' + error.message);
     } else {
       alert('Prośba o dodanie do sekcji została wysłana do kierownictwa! ⏳');
-      pobierzDodatkoweSekcje();
+      pobierzDodatkoweSekcje(); // natychmiastowe odświeżenie listy
     }
   };
 
   const usunDodatkowaSekcje = async (id) => {
-    if (!window.confirm('Czy na pewno chcesz zrezygnować z tej dodatkowej sekcji?')) return;
+    if (!window.confirm('Czy na pewno chcesz rezygnować z tej dodatkowej sekcji?')) return;
 
     const { error } = await supabase.from('dodatkowe_sekcje').delete().eq('id', id);
     if (!error) {
       pobierzDodatkoweSekcje();
+    } else {
+      alert('Błąd usuwania: ' + error.message);
     }
   };
 
@@ -83,18 +98,17 @@ export default function PodgladCzlonka({ profile }) {
         Zarządzaj swoimi danymi oraz prośbami o dostęp do dodatkowych sekcji w zespole.
       </p>
 
-      {/* Status i dane (główna sekcja tylko do odczytu) */}
+      {/* Status i dane */}
       <div style={{ marginBottom: '25px', padding: '15px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
         <p style={{ margin: '0 0 8px 0', fontSize: '14px', color: '#334155' }}>
           <strong>Rola w systemie:</strong> <span style={{ textTransform: 'capitalize', color: '#8b5cf6', fontWeight: 'bold' }}>{profile.rola}</span>
         </p>
         <p style={{ margin: 0, fontSize: '14px', color: '#334155' }}>
           <strong>Główna sekcja:</strong> <span style={{ textTransform: 'uppercase', color: '#3182ce', fontWeight: 'bold' }}>{profile.sekcja}</span>
-          <span style={{ display: 'block', fontSize: '11px', color: '#64748b', marginTop: '2px' }}>(Zmiana głównej sekcji możliwa tylko przez kierownictwo)</span>
         </p>
       </div>
 
-      {/* Formularz edycji imienia i nazwiska */}
+      {/* Formularz edycji imienia */}
       <form onSubmit={zaktualizujProfil} style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginBottom: '30px' }}>
         <div>
           <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#334155', marginBottom: '5px' }}>Imię i nazwisko:</label>
