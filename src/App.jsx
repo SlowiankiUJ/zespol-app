@@ -50,10 +50,11 @@ export default function App() {
     }
   };
 
-  if (loading) {
+  // Zabezpieczenie przed renderowaniem widoku zanim profil zostanie pobrany z bazy
+  if (loading || (session && !profile)) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', fontFamily: 'sans-serif' }}>
-        <p style={{ fontSize: '18px', color: '#4a5568' }}>Ładowanie systemu ZPiT Słowianki...</p>
+        <p style={{ fontSize: '18px', color: '#4a5568' }}>Ładowanie profilu użytkownika...</p>
       </div>
     );
   }
