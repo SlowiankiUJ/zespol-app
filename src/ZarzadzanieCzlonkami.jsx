@@ -25,16 +25,22 @@ export default function ZarzadzanieCzlonkami() {
   };
 
   const pobierzStatystykiFrekwencji = async (listaCzlonkow) => {
-    const { data: dekData } = await supabase.from('deklaracje_obecnosci').select('id_uzytkownika, planuje');
+    // LICZYMY FREKWENCJĘ TYLKO Z FAKTYCZNEJ OBECNOŚCI (kolumna 'obecny')
+    const { data: dekData } = await supabase.from('deklaracje_obecnosci').select('id_uzytkownika, obecny');
     const staty = {};
     listaCzlonkow.forEach(c => { staty[c.id] = { obecny: 0, nieobecny: 0, total: 0 }; });
 
     if (dekData) {
       dekData.forEach(d => {
         if (staty[d.id_uzytkownika]) {
-          staty[d.id_uzytkownika].total++;
-          if (d.planuje === true) staty[d.id_uzytkownika].obecny++;
-          if (d.planuje === false) staty[d.id_uzytkownika].nieobecny++;
+          // Jeśli obecność została sprawdzona (obecny nie jest null/undefined)
+          if (d.obecny === true) {
+            staty[d.id_uzytkownika].obecny++;
+            staty[d.id_uzytkownika].total++;
+          } else if (d.obecny === false) {
+            staty[d.id_uzytkownika].nieobecny++;
+            staty[d.id_uzytkownika].total++;
+          }
         }
       });
     }
@@ -70,7 +76,7 @@ export default function ZarzadzanieCzlonkami() {
               <tr>
                 <th style={{ borderBottom: '2px solid #cbd5e1', padding: '10px', color: '#475569', fontSize: '14px' }}>Członek zespołu</th>
                 <th style={{ borderBottom: '2px solid #cbd5e1', padding: '10px', color: '#475569', fontSize: '14px' }}>Sekcja / Głos</th>
-                <th style={{ borderBottom: '2px solid #cbd5e1', padding: '10px', color: '#475569', fontSize: '14px' }}>Frekwencja</th>
+                <th style={{ borderBottom: '2px solid #cbd5e1', padding: '10px', color: '#475569', fontSize: '14px' }}>Frekwencja (Realna)</th>
                 <th style={{ borderBottom: '2px solid #cbd5e1', padding: '10px', color: '#475569', fontSize: '14px' }}>Zmień sekcję</th>
               </tr>
             </thead>
@@ -83,7 +89,6 @@ export default function ZarzadzanieCzlonkami() {
                   <tr key={czlonek.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                     <td style={{ padding: '12px', fontSize: '14px', fontWeight: '500', color: '#1e293b' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        {/* MINIATURKA ZDJĘCIA */}
                         <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#e2e8f0', overflow: 'hidden', display: 'flex', justifyContent: 'center', alignItems: 'center', flexShrink: 0 }}>
                           {czlonek.avatar_url ? (
                             <img src={czlonek.avatar_url} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -105,7 +110,11 @@ export default function ZarzadzanieCzlonkami() {
                       )}
                     </td>
                     <td style={{ padding: '12px', fontSize: '14px', color: '#334155' }}>
-                      🟢 {stat.obecny} | 🔴 {stat.nieobecny} ({procent}%)
+                      {stat.total === 0 ? (
+                        <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>Brak wpisów</span>
+                      ) : (
+                        <>🟢 {stat.obecny} | 🔴 {stat.nieobecny} ({procent}%)</>
+                      )}
                     </td>
                     <td style={{ padding: '12px', fontSize: '14px' }}>
                       <select value={czlonek.sekcja} onChange={(e) => zmienSekcje(czlonek.id, e.target.value)} style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px' }}>

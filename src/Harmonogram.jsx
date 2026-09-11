@@ -3,7 +3,6 @@ import { supabase } from './supabaseClient';
 import { pobierzStylSekcji } from './kolory';
 import ListaObecnosci from './ListaObecnosci';
 
-// Automatyczne i bezbłędne formatowanie czasu lokalnego
 const formatujWyswietlanie = (isoStr) => {
   if (!isoStr) return '';
   const d = new Date(isoStr);
@@ -15,6 +14,7 @@ export default function Harmonogram({ profile }) {
   const [deklaracje, setDeklaracje] = useState({});
   const [usprawiedliwienia, setUsprawiedliwienia] = useState({});
   const [aktywneInputyUsprawiedliwienia, setAktywneInputyUsprawiedliwienia] = useState({});
+  const [rozwinitaObecnosc, setRozwinitaObecnosc] = useState({});
 
   const [dataProby, setDataProby] = useState('');
   const [godzinaProby, setGodzinaProby] = useState('18:00');
@@ -174,6 +174,10 @@ export default function Harmonogram({ profile }) {
     if (!error) { setUsprawiedliwienia(prev => ({ ...prev, [probaId]: tekst })); alert('Usprawiedliwienie zapisane. ✅'); }
   };
 
+  const przelaczObecnosc = (probaId) => {
+    setRozwinitaObecnosc(prev => ({ ...prev, [probaId]: !prev[probaId] }));
+  };
+
   const isKadra = profile.rola === 'kierownik' || profile.rola === 'pracownik';
 
   return (
@@ -187,7 +191,7 @@ export default function Harmonogram({ profile }) {
             <form onSubmit={dodajProbe} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <div style={{ flex: 2 }}>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#64748b', marginBottom: '3px' }}>Data:</label>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#64748b', marginBottom: '3px' }}>Data (kliknij po kalendarz):</label>
                   <input type="date" value={dataProby} onChange={(e) => setDataProby(e.target.value)} onClick={(e) => e.target.showPicker && e.target.showPicker()} required style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', cursor: 'pointer', fontSize: '14px' }} />
                 </div>
                 <div style={{ flex: 1 }}>
@@ -254,6 +258,7 @@ export default function Harmonogram({ profile }) {
             const stylSekcji = pobierzStylSekcji(proba.sekcja);
             const deklaracjaUzytkownika = deklaracje[proba.id];
             const czyEdytowana = edycjaProbaId === proba.id;
+            const isRozwinieta = rozwinitaObecnosc[proba.id];
 
             return (
               <div key={proba.id} style={{ 
@@ -290,6 +295,9 @@ export default function Harmonogram({ profile }) {
                       </div>
                       {isKadra && (
                         <div style={{ display: 'flex', gap: '6px' }}>
+                          <button onClick={() => przelaczObecnosc(proba.id)} style={{ padding: '5px 10px', backgroundColor: '#8b5cf6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
+                            {isRozwinieta ? 'Zwiń listę ▲' : 'Sprawdź obecność 📝'}
+                          </button>
                           <button onClick={() => rozpocznijEdycje(proba)} style={{ padding: '5px 10px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>Edytuj ✏️</button>
                           <button onClick={() => usunProbe(proba.id)} style={{ padding: '5px 10px', backgroundColor: '#ef4444', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>Usuń 🗑️</button>
                         </div>
@@ -320,7 +328,9 @@ export default function Harmonogram({ profile }) {
                         )}
                       </div>
                     )}
-                    {isKadra && <ListaObecnosci probaId={proba.id} sekcja={proba.sekcja} />}
+                    
+                    {/* Lista obecności wysuwa się po kliknięciu */}
+                    {isKadra && isRozwinieta && <ListaObecnosci probaId={proba.id} sekcja={proba.sekcja} />}
                   </>
                 )}
               </div>
