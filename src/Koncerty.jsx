@@ -4,7 +4,7 @@ import { supabase } from './supabaseClient';
 export default function Koncerty({ profile }) {
   const [koncerty, setKoncerty] = useState([]);
   const [deklaracjeKoncertow, setDeklaracjeKoncertow] = useState({}); // id_koncertu -> true/false
-  const [zapisaniNaKoncert, setZapisaniNaKoncert] = useState({}); // id_koncertu -> [ { id, id_uzytkownika, imie_nazwisko, sekcja, planuje, zakwalifikowany } ]
+  const [zapisaniNaKoncert, setZapisaniNaKoncert] = useState({}); // id_koncertu -> [ { id, id_uzytkownika, imie_nazwisko, sekcja, glos, planuje, zakwalifikowany } ]
   const [rozwinieteSkłady, setRozwinieteSkłady] = useState({}); // id_koncertu -> true/false
 
   // Formularz dodawania koncertu (Tylko kierownik / pracownik)
@@ -61,7 +61,7 @@ export default function Koncerty({ profile }) {
 
     const { data: profData } = await supabase
       .from('profiles')
-      .select('id, imie_nazwisko, sekcja')
+      .select('id, imie_nazwisko, sekcja, glos')
       .eq('status', 'zatwierdzony');
 
     if (dekData && profData) {
@@ -142,7 +142,6 @@ export default function Koncerty({ profile }) {
     }
   };
 
-  // Funkcja dla kadry do zmiany statusu kwalifikacji
   const zmienKwalifikacje = async (koncertId, userId, statusZakwalifikowany) => {
     const { error } = await supabase
       .from('deklaracje_koncerty')
@@ -168,7 +167,7 @@ export default function Koncerty({ profile }) {
     <div style={{ marginTop: '20px', padding: '25px', border: '1px solid #e2e8f0', borderRadius: '12px', backgroundColor: '#ffffff', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
       <h2 style={{ color: '#1e293b', marginBottom: '15px', fontSize: '20px' }}>Koncerty i Wydarzenia 🎻</h2>
 
-      {/* Formularz dodawania koncertu (Tylko kierownik / pracownik) */}
+      {/* Formularz dodawania koncertu */}
       {(profile.rola === 'kierownik' || profile.rola === 'pracownik') && (
         <div style={{ marginBottom: '30px', padding: '20px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
           <h3 style={{ margin: '0 0 15px 0', fontSize: '16px', color: '#334155' }}>Zaplanuj nowy koncert</h3>
@@ -228,7 +227,6 @@ export default function Koncerty({ profile }) {
             const zapisani = zapisaniNaKoncert[koncert.id] || [];
             const isRozwiniete = rozwinieteSkłady[koncert.id];
 
-            // Filtrujemy tylko osoby, które zadeklarowały udział (planuje === true) wg głównej sekcji
             const chętni = zapisani.filter(z => z.planuje === true);
             const balet = chętni.filter(z => z.sekcja === 'balet');
             const chor = chętni.filter(z => z.sekcja === 'chór');
@@ -274,7 +272,7 @@ export default function Koncerty({ profile }) {
                   <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
                       <span style={{ fontSize: '14px', fontWeight: '600', color: '#1e293b' }}>
-                        Deklaracja udziału (Sekcja: <strong style={{ textTransform: 'uppercase' }}>{profile.sekcja}</strong>):
+                        Deklaracja udziału (Sekcja: <strong style={{ textTransform: 'uppercase' }}>{profile.sekcja}</strong>{profile.sekcja === 'chór' ? ` - ${profile.glos || 'Brak głosu'}` : ''}):
                       </span>
                       
                       <div style={{ display: 'flex', gap: '8px' }}>
@@ -328,9 +326,28 @@ export default function Koncerty({ profile }) {
                   {isRozwiniete && (
                     <div style={{ marginTop: '12px', padding: '15px', backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #cbd5e1', display: 'flex', flexDirection: 'column', gap: '15px' }}>
                       
-                      {renderujListeSekcji('🩰 Balet', balet, koncert.id, profile, zmienKwalifikacje)}
-                      {renderujListeSekcji('🎤 Chór', chor, koncert.id, profile, zmienKwalifikacje)}
-                      {renderujListeSekcji('🎻 Kapela', kapela, koncert.id, profile, zmienKwalifikacje)}
+                      {/* Balet */}
+                      {renderujListeOsobek('🩰 Balet', balet, koncert.id, profile, zmienKwalifikacje)}
+
+                      {/* Chór z podziałem na głosy */}
+                      <div>
+                        <h5 style={{ margin: '0 0 8px 0', fontSize: '15px', color: '#1e293b', borderBottom: '2px solid #d69e2e', paddingBottom: '4px' }}>
+                          🎤 Chór (Ogółem: {chor.length} zgłoszonych)
+                        </h5>
+                        {['Sopran', 'Alt', 'Tenor', 'Bas'].map(glosName => {
+                          const osobyGlosu = chor.filter(o => (o.glos || 'Sopran') === glosName);
+                          if (osobyGlosu.length === 0) return null;
+                          return (
+                            <div key={glosName} style={{ marginTop: '10px', paddingLeft: '10px' }}>
+                              {renderujListeOsobek(`• ${glosName}`, osobyGlosu, koncert.id, profile, zmienKwalifikacje, true)}
+                            </div>
+                          );
+                        })}
+                        {chor.length === 0 && <p style={{ fontSize: '13px', color: '#94a3b8', margin: '0' }}>Brak zgłoszeń w chórze</p>}
+                      </div>
+
+                      {/* Kapela */}
+                      {renderujListeOsobek('🎻 Kapela', kapela, koncert.id, profile, zmienKwalifikacje)}
 
                     </div>
                   )}
@@ -345,63 +362,57 @@ export default function Koncerty({ profile }) {
   );
 }
 
-// Funkcja renderująca listę osób w danej sekcji z podziałem na zakwalifikowanych i rezerwę
-function renderujListeSekcji(tytulSekcji, listaOsob, koncertId, profile, naZmienKwalifikacje) {
+// Funkcja pomocnicza renderująca listę z podziałem na zakwalifikowanych i rezerwę
+function renderujListeOsobek(tytulSekcji, listaOsob, koncertId, profile, naZmienKwalifikacje, isPodgrupa = false) {
   const zakwalifikowani = listaOsob.filter(o => o.zakwalifikowany === true);
   const rezerwa = listaOsob.filter(o => o.zakwalifikowany === false || o.zakwalifikowany === null);
   const isKadra = profile.rola === 'kierownik' || profile.rola === 'pracownik';
 
   return (
     <div>
-      <h5 style={{ margin: '0 0 8px 0', fontSize: '14px', color: '#1e293b', borderBottom: '2px solid #cbd5e1', paddingBottom: '4px' }}>
-        {tytulSekcji} ({listaOsob.length} zgłoszonych)
+      <h5 style={{ margin: isPodgrupa ? '4px 0 4px 0' : '0 0 8px 0', fontSize: isPodgrupa ? '13px' : '14px', color: isPodgrupa ? '#d97706' : '#1e293b', borderBottom: isPodgrupa ? 'none' : '2px solid #cbd5e1', paddingBottom: '4px', textTransform: isPodgrupa ? 'uppercase' : 'none' }}>
+        {tytulSekcji} ({listaOsob.length})
       </h5>
 
       {listaOsob.length === 0 ? (
-        <p style={{ fontSize: '13px', color: '#94a3b8', margin: '0 0 10px 0' }}>Brak zgłoszeń w tej sekcji</p>
+        <p style={{ fontSize: '12px', color: '#94a3b8', margin: '0 0 5px 0' }}>Brak zgłoszeń</p>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '8px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' }}>
           
           {/* Zakwalifikowani */}
-          <div>
-            <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#10b981' }}>🟢 Zakwalifikowani ({zakwalifikowani.length}):</span>
-            {zakwalifikowani.length === 0 ? (
-              <p style={{ fontSize: '12px', color: '#94a3b8', margin: '2px 0 5px 10px' }}>Brak zakwalifikowanych osób</p>
-            ) : (
-              <ul style={{ margin: '4px 0 8px 15px', paddingLeft: '10px', fontSize: '13px', color: '#334155' }}>
+          {zakwalifikowani.length > 0 && (
+            <div>
+              <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#10b981' }}>🟢 Zakwalifikowani ({zakwalifikowani.length}):</span>
+              <ul style={{ margin: '2px 0 6px 15px', paddingLeft: '10px', fontSize: '13px', color: '#334155' }}>
                 {zakwalifikowani.map(osoba => (
-                  <li key={osoba.id_uzytkownika} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', padding: '4px 8px', backgroundColor: '#f0fdf4', borderRadius: '4px' }}>
+                  <li key={osoba.id_uzytkownika} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px', padding: '3px 6px', backgroundColor: '#f0fdf4', borderRadius: '4px' }}>
                     <span>{osoba.imie_nazwisko} {osoba.id_uzytkownika === profile.id && '(Ty)'}</span>
-                    
                     {isKadra && (
                       <button 
                         onClick={() => naZmienKwalifikacje(koncertId, osoba.id_uzytkownika, false)}
-                        style={{ padding: '3px 8px', backgroundColor: '#fef3c7', color: '#92400e', border: 'none', borderRadius: '4px', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold' }}
+                        style={{ padding: '2px 6px', backgroundColor: '#fef3c7', color: '#92400e', border: 'none', borderRadius: '4px', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold' }}
                       >
-                        Przenieś na rezerwę ⏳
+                        Rezerwa ⏳
                       </button>
                     )}
                   </li>
                 ))}
               </ul>
-            )}
-          </div>
+            </div>
+          )}
 
-          {/* Lista rezerwowa / Oczekujący */}
-          <div>
-            <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#d97706' }}>⏳ Lista rezerwowa / Oczekujący ({rezerwa.length}):</span>
-            {rezerwa.length === 0 ? (
-              <p style={{ fontSize: '12px', color: '#94a3b8', margin: '2px 0 5px 10px' }}>Brak osób na rezerwie</p>
-            ) : (
-              <ul style={{ margin: '4px 0 0 15px', paddingLeft: '10px', fontSize: '13px', color: '#334155' }}>
+          {/* Rezerwa */}
+          {rezerwa.length > 0 && (
+            <div>
+              <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#d97706' }}>⏳ Lista rezerwowa ({rezerwa.length}):</span>
+              <ul style={{ margin: '2px 0 0 15px', paddingLeft: '10px', fontSize: '13px', color: '#334155' }}>
                 {rezerwa.map(osoba => (
-                  <li key={osoba.id_uzytkownika} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', padding: '4px 8px', backgroundColor: '#fffbeb', borderRadius: '4px' }}>
+                  <li key={osoba.id_uzytkownika} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px', padding: '3px 6px', backgroundColor: '#fffbeb', borderRadius: '4px' }}>
                     <span>{osoba.imie_nazwisko} {osoba.id_uzytkownika === profile.id && '(Ty)'}</span>
-                    
                     {isKadra && (
                       <button 
                         onClick={() => naZmienKwalifikacje(koncertId, osoba.id_uzytkownika, true)}
-                        style={{ padding: '3px 8px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '4px', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold' }}
+                        style={{ padding: '2px 6px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '4px', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold' }}
                       >
                         Zakwalifikuj ✔️
                       </button>
@@ -409,8 +420,8 @@ function renderujListeSekcji(tytulSekcji, listaOsob, koncertId, profile, naZmien
                   </li>
                 ))}
               </ul>
-            )}
-          </div>
+            </div>
+          )}
 
         </div>
       )}

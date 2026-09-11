@@ -11,7 +11,6 @@ export default function ZarzadzanieCzlonkami() {
   }, []);
 
   const pobierzCzlonkowIDane = async () => {
-    // 1. Pobierz zatwierdzonych członków
     const { data: profData, error } = await supabase
       .from('profiles')
       .select('*')
@@ -50,7 +49,7 @@ export default function ZarzadzanieCzlonkami() {
   const zmienSekcje = async (userId, nowaSekcja) => {
     const { error } = await supabase
       .from('profiles')
-      .update({ sekcja: nowaSekcja })
+      .update({ sekcja: nowaSekcja, glos: nowaSekcja === 'chór' ? 'Sopran' : null })
       .eq('id', userId);
 
     if (error) {
@@ -62,11 +61,22 @@ export default function ZarzadzanieCzlonkami() {
     }
   };
 
+  const zmienGlos = async (userId, nowyGlos) => {
+    const { error } = await supabase
+      .from('profiles')
+      .update({ glos: nowyGlos })
+      .eq('id', userId);
+
+    if (!error) {
+      pobierzCzlonkowIDane();
+    }
+  };
+
   return (
     <div style={{ marginTop: '20px', padding: '25px', border: '1px solid #e2e8f0', borderRadius: '12px', backgroundColor: '#ffffff', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
       <h2 style={{ color: '#1e293b', marginBottom: '5px', fontSize: '20px' }}>Zarządzanie Członkami Zespołu 👥</h2>
       <p style={{ color: '#64748b', fontSize: '14px', marginBottom: '20px' }}>
-        Przeglądaj listę członków, sprawdzaj ich ogólną frekwencję oraz zarządzaj przypisaniem do sekcji.
+        Przeglądaj listę członków, sprawdzaj ich frekwencję oraz zarządzaj sekcjami i głosami chóralnymi.
       </p>
 
       {komunikat && <p style={{ color: '#10b981', fontWeight: '600', marginBottom: '15px' }}>{komunikat}</p>}
@@ -79,8 +89,8 @@ export default function ZarzadzanieCzlonkami() {
             <thead>
               <tr>
                 <th style={{ borderBottom: '2px solid #cbd5e1', padding: '10px', color: '#475569', fontSize: '14px' }}>Imię i nazwisko</th>
-                <th style={{ borderBottom: '2px solid #cbd5e1', padding: '10px', color: '#475569', fontSize: '14px' }}>Aktualna sekcja</th>
-                <th style={{ borderBottom: '2px solid #cbd5e1', padding: '10px', color: '#475569', fontSize: '14px' }}>Frekwencja (Deklaracje)</th>
+                <th style={{ borderBottom: '2px solid #cbd5e1', padding: '10px', color: '#475569', fontSize: '14px' }}>Sekcja / Głos</th>
+                <th style={{ borderBottom: '2px solid #cbd5e1', padding: '10px', color: '#475569', fontSize: '14px' }}>Frekwencja</th>
                 <th style={{ borderBottom: '2px solid #cbd5e1', padding: '10px', color: '#475569', fontSize: '14px' }}>Zmień sekcję</th>
               </tr>
             </thead>
@@ -94,11 +104,25 @@ export default function ZarzadzanieCzlonkami() {
                     <td style={{ padding: '12px', fontSize: '14px', fontWeight: '500', color: '#1e293b' }}>
                       {czlonek.imie_nazwisko}
                     </td>
-                    <td style={{ padding: '12px', fontSize: '14px', textTransform: 'uppercase', fontWeight: '600', color: '#3182ce' }}>
-                      {czlonek.sekcja}
+                    <td style={{ padding: '12px', fontSize: '14px' }}>
+                      <span style={{ textTransform: 'uppercase', fontWeight: '600', color: '#3182ce' }}>{czlonek.sekcja}</span>
+                      {czlonek.sekcja === 'chór' && (
+                        <div style={{ marginTop: '4px' }}>
+                          <select 
+                            value={czlonek.glos || 'Sopran'} 
+                            onChange={(e) => zmienGlos(czlonek.id, e.target.value)}
+                            style={{ padding: '4px', fontSize: '12px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+                          >
+                            <option value="Sopran">Sopran</option>
+                            <option value="Alt">Alt</option>
+                            <option value="Tenor">Tenor</option>
+                            <option value="Bas">Bas</option>
+                          </select>
+                        </div>
+                      )}
                     </td>
                     <td style={{ padding: '12px', fontSize: '14px', color: '#334155' }}>
-                      🟢 Będzie: <strong>{stat.obecny}</strong> | 🔴 Nie będzie: <strong>{stat.nieobecny}</strong> ({procent}% gotowości)
+                      🟢 Będzie: <strong>{stat.obecny}</strong> | 🔴 Nie będzie: <strong>{stat.nieobecny}</strong> ({procent}%)
                     </td>
                     <td style={{ padding: '12px', fontSize: '14px' }}>
                       <select 

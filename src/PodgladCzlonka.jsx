@@ -3,6 +3,7 @@ import { supabase } from './supabaseClient';
 
 export default function PodgladCzlonka({ profile }) {
   const [imieNazwisko, setImieNazwisko] = useState(profile?.imie_nazwisko || '');
+  const [glos, setGlos] = useState(profile?.glos || '');
   
   // Dodatkowe sekcje
   const [dodatkowaSekcjaWybór, setDodatkowaSekcjaWybór] = useState('balet');
@@ -14,6 +15,7 @@ export default function PodgladCzlonka({ profile }) {
   useEffect(() => {
     if (profile) {
       setImieNazwisko(profile.imie_nazwisko || '');
+      setGlos(profile.glos || '');
       pobierzDodatkoweSekcje();
     }
   }, [profile]);
@@ -33,9 +35,14 @@ export default function PodgladCzlonka({ profile }) {
     e.preventDefault();
     setLoading(true);
 
+    const daneDoAktualizacji = { imie_nazwisko: imieNazwisko };
+    if (profile.sekcja === 'chór') {
+      daneDoAktualizacji.glos = glos;
+    }
+
     const { error } = await supabase
       .from('profiles')
-      .update({ imie_nazwisko: imieNazwisko })
+      .update(daneDoAktualizacji)
       .eq('id', profile.id);
 
     setLoading(false);
@@ -55,7 +62,6 @@ export default function PodgladCzlonka({ profile }) {
       return;
     }
 
-    // Sprawdzamy najpierw czy wpis już istnieje lokalnie
     const juzIstnieje = mojeDodatkoweSekcje.some(ds => ds.sekcja === dodatkowaSekcjaWybór);
     if (juzIstnieje) {
       alert('Masz już wysłaną prośbę lub dostęp do tej sekcji.');
@@ -64,19 +70,13 @@ export default function PodgladCzlonka({ profile }) {
 
     const { error } = await supabase
       .from('dodatkowe_sekcje')
-      .insert([
-        { 
-          id_uzytkownika: profile.id, 
-          sekcja: dodatkowaSekcjaWybór, 
-          status: 'oczekujacy' 
-        }
-      ]);
+      .insert([{ id_uzytkownika: profile.id, sekcja: dodatkowaSekcjaWybór, status: 'oczekujacy' }]);
 
     if (error) {
       alert('Błąd bazy danych: ' + error.message);
     } else {
       alert('Prośba o dodanie do sekcji została wysłana do kierownictwa! ⏳');
-      pobierzDodatkoweSekcje(); // natychmiastowe odświeżenie listy
+      pobierzDodatkoweSekcje();
     }
   };
 
@@ -86,8 +86,6 @@ export default function PodgladCzlonka({ profile }) {
     const { error } = await supabase.from('dodatkowe_sekcje').delete().eq('id', id);
     if (!error) {
       pobierzDodatkoweSekcje();
-    } else {
-      alert('Błąd usuwania: ' + error.message);
     }
   };
 
@@ -103,12 +101,17 @@ export default function PodgladCzlonka({ profile }) {
         <p style={{ margin: '0 0 8px 0', fontSize: '14px', color: '#334155' }}>
           <strong>Rola w systemie:</strong> <span style={{ textTransform: 'capitalize', color: '#8b5cf6', fontWeight: 'bold' }}>{profile.rola}</span>
         </p>
-        <p style={{ margin: 0, fontSize: '14px', color: '#334155' }}>
+        <p style={{ margin: '0 0 8px 0', fontSize: '14px', color: '#334155' }}>
           <strong>Główna sekcja:</strong> <span style={{ textTransform: 'uppercase', color: '#3182ce', fontWeight: 'bold' }}>{profile.sekcja}</span>
         </p>
+        {profile.sekcja === 'chór' && (
+          <p style={{ margin: 0, fontSize: '14px', color: '#334155' }}>
+            <strong>Głos chóralny:</strong> <span style={{ color: '#d97706', fontWeight: 'bold' }}>{profile.glos || 'Nie wybrano'}</span>
+          </p>
+        )}
       </div>
 
-      {/* Formularz edycji imienia */}
+      {/* Formularz edycji */}
       <form onSubmit={zaktualizujProfil} style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginBottom: '30px' }}>
         <div>
           <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#334155', marginBottom: '5px' }}>Imię i nazwisko:</label>
@@ -121,6 +124,24 @@ export default function PodgladCzlonka({ profile }) {
           />
         </div>
 
+        {profile.sekcja === 'chór' && (
+          <div>
+            <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#334155', marginBottom: '5px' }}>Wybierz głos:</label>
+            <select 
+              value={glos} 
+              onChange={(e) => setGlos(e.target.value)} 
+              required
+              style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', boxSizing: 'border-box' }}
+            >
+              <option value="">-- Wybierz głos --</option>
+              <option value="Sopran">Sopran</option>
+              <option value="Alt">Alt</option>
+              <option value="Tenor">Tenor</option>
+              <option value="Bas">Bas</option>
+            </select>
+          </div>
+        )}
+
         <button type="submit" disabled={loading} style={{ padding: '10px', backgroundColor: '#8b5cf6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}>
           {loading ? 'Zapisywanie...' : 'Zapisz zmiany w profilu 💾'}
         </button>
@@ -128,19 +149,16 @@ export default function PodgladCzlonka({ profile }) {
 
       {komunikat && <p style={{ color: '#10b981', textAlign: 'center', fontWeight: '500' }}>{komunikat}</p>}
 
-      {/* Sekcja dodatkowych sekcji */}
+      {/* Dodatkowe sekcje */}
       <hr style={{ border: 'none', borderTop: '1px solid #e2e8f0', margin: '25px 0' }} />
       <h3 style={{ fontSize: '16px', color: '#1e293b', marginBottom: '10px' }}>Dodatkowe sekcje (gościnne próby)</h3>
-      <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '15px' }}>
-        Chcesz chodzić na próby innej sekcji? Wyślij prośbę do kierownika.
-      </p>
-
+      
       {mojeDodatkoweSekcje.length > 0 && (
         <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 20px 0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
           {mojeDodatkoweSekcje.map(ds => (
             <li key={ds.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
               <span style={{ fontSize: '14px', textTransform: 'uppercase', fontWeight: '600', color: '#334155' }}>
-                {ds.sekcja} {ds.status === 'zatwierdzony' ? '🟢 (Zatwierdzono)' : '⏳ (Oczekuje na akceptację)'}
+                {ds.sekcja} {ds.status === 'zatwierdzony' ? '🟢 (Zatwierdzono)' : '⏳ (Oczekuje)'}
               </span>
               <button onClick={() => usunDodatkowaSekcje(ds.id)} style={{ padding: '4px 8px', backgroundColor: '#ef4444', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}>
                 Rezygnuj ❌

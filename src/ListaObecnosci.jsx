@@ -58,58 +58,62 @@ export default function ListaObecnosci({ probaId, sekcja }) {
     setObecnosci(mapa);
   };
 
+  const renderujWpisOsoby = (osoba, isGosc = false) => {
+    const planuje = obecnosci[osoba.id];
+    return (
+      <li key={osoba.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', backgroundColor: isGosc ? '#faf5ff' : '#f8fafc', borderRadius: '4px', fontSize: '13px', border: isGosc ? '1px solid #f3e8ff' : 'none' }}>
+        <span style={{ fontWeight: '500', color: '#1e293b' }}>
+          {osoba.imie_nazwisko} 
+          {isGosc && <span style={{ fontSize: '11px', color: '#8b5cf6', fontWeight: '600' }}> (Gościnnie z: {osoba.sekcja})</span>}
+        </span>
+        <div>
+          {planuje === true ? (
+            <span style={{ color: '#10b981', fontWeight: 'bold', backgroundColor: '#d1fae5', padding: '2px 8px', borderRadius: '10px', fontSize: '12px' }}>Deklaruje obecność 👍</span>
+          ) : planuje === false ? (
+            <span style={{ color: '#ef4444', fontWeight: 'bold', backgroundColor: '#fee2e2', padding: '2px 8px', borderRadius: '10px', fontSize: '12px' }}>Nieobecny 👎</span>
+          ) : (
+            <span style={{ color: '#94a3b8', fontSize: '12px' }}>Brak deklaracji ⚪</span>
+          )}
+        </div>
+      </li>
+    );
+  };
+
   return (
     <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
       <h5 style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#1e293b' }}>Lista obecności i deklaracji (Widok Kadry):</h5>
 
-      {/* Główni członkowie */}
-      <p style={{ fontSize: '11px', fontWeight: 'bold', color: '#64748b', margin: '0 0 4px 0', textTransform: 'uppercase' }}>Członkowie stałi:</p>
-      <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 15px 0', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-        {glowneProfile.map(osoba => {
-          const planuje = obecnosci[osoba.id];
+      {/* Jeśli sekcja to Chór -> Podział na Sopran, Alt, Tenor, Bas */}
+      {sekcja === 'chór' ? (
+        ['Sopran', 'Alt', 'Tenor', 'Bas'].map(glosName => {
+          const osobyGlosu = glowneProfile.filter(p => (p.glos || 'Sopran') === glosName);
+          if (osobyGlosu.length === 0) return null;
+
           return (
-            <li key={osoba.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', backgroundColor: '#f8fafc', borderRadius: '4px', fontSize: '13px' }}>
-              <span style={{ fontWeight: '500', color: '#1e293b' }}>{osoba.imie_nazwisko}</span>
-              <div>
-                {planuje === true ? (
-                  <span style={{ color: '#10b981', fontWeight: 'bold', backgroundColor: '#d1fae5', padding: '2px 8px', borderRadius: '10px', fontSize: '12px' }}>Deklaruje obecność 👍</span>
-                ) : planuje === false ? (
-                  <span style={{ color: '#ef4444', fontWeight: 'bold', backgroundColor: '#fee2e2', padding: '2px 8px', borderRadius: '10px', fontSize: '12px' }}>Nieobecny 👎</span>
-                ) : (
-                  <span style={{ color: '#94a3b8', fontSize: '12px' }}>Brak deklaracji ⚪</span>
-                )}
-              </div>
-            </li>
+            <div key={glosName} style={{ marginBottom: '12px' }}>
+              <p style={{ fontSize: '11px', fontWeight: 'bold', color: '#d97706', margin: '0 0 4px 0', textTransform: 'uppercase' }}>
+                {glosName} ({osobyGlosu.length}):
+              </p>
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {osobyGlosu.map(osoba => renderujWpisOsoby(osoba, false))}
+              </ul>
+            </div>
           );
-        })}
-      </ul>
+        })
+      ) : (
+        <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 12px 0', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          {glowneProfile.map(osoba => renderujWpisOsoby(osoba, false))}
+        </ul>
+      )}
 
       {/* Gościnni członkowie */}
       {goscinneProfile.length > 0 && (
-        <>
-          <p style={{ fontSize: '11px', fontWeight: 'bold', color: '#8b5cf6', margin: '10px 0 4px 0', textTransform: 'uppercase' }}>Członkowie gościnni (dodatkowa sekcja):</p>
+        <div style={{ marginTop: '12px', borderTop: '1px dashed #cbd5e1', paddingTop: '10px' }}>
+          <p style={{ fontSize: '11px', fontWeight: 'bold', color: '#8b5cf6', margin: '0 0 4px 0', textTransform: 'uppercase' }}>Członkowie gościnni:</p>
           <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            {goscinneProfile.map(gosc => {
-              const planuje = obecnosci[gosc.id];
-              return (
-                <li key={gosc.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', backgroundColor: '#faf5ff', borderRadius: '4px', fontSize: '13px', border: '1px solid #f3e8ff' }}>
-                  <span style={{ fontWeight: '500', color: '#1e293b' }}>
-                    {gosc.imie_nazwisko} <span style={{ fontSize: '11px', color: '#8b5cf6', fontWeight: '600' }}>(Gościnnie z: {gosc.sekcja})</span>
-                  </span>
-                  <div>
-                    {planuje === true ? (
-                      <span style={{ color: '#10b981', fontWeight: 'bold', backgroundColor: '#d1fae5', padding: '2px 8px', borderRadius: '10px', fontSize: '12px' }}>Deklaruje obecność 👍</span>
-                    ) : planuje === false ? (
-                      <span style={{ color: '#ef4444', fontWeight: 'bold', backgroundColor: '#fee2e2', padding: '2px 8px', borderRadius: '10px', fontSize: '12px' }}>Nieobecny 👎</span>
-                    ) : (
-                      <span style={{ color: '#94a3b8', fontSize: '12px' }}>Brak deklaracji ⚪</span>
-                    )}
-                  </div>
-                </li>
-              );
-            })}
+            {goscinneProfile.map(gosc => renderujWpisOsoby(gosc, true))}
           </ul>
-        </>
+        </div>
       )}
     </div>
   );
