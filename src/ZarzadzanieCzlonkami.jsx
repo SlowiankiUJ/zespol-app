@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
+import TopFrekwencja from './TopFrekwencja';
 
 export default function ZarzadzanieCzlonkami() {
   const [czlonkowie, setCzlonkowie] = useState([]);
@@ -25,7 +26,7 @@ export default function ZarzadzanieCzlonkami() {
   };
 
   const pobierzStatystykiFrekwencji = async (listaCzlonkow) => {
-    // LICZYMY FREKWENCJĘ TYLKO Z FAKTYCZNEJ OBECNOŚCI (kolumna 'obecny')
+    // LICZYMY FREKWENCJĘ TYLKO Z FAKTYCZNEJ OBECNOŚCI
     const { data: dekData } = await supabase.from('deklaracje_obecnosci').select('id_uzytkownika, obecny');
     const staty = {};
     listaCzlonkow.forEach(c => { staty[c.id] = { obecny: 0, nieobecny: 0, total: 0 }; });
@@ -33,7 +34,6 @@ export default function ZarzadzanieCzlonkami() {
     if (dekData) {
       dekData.forEach(d => {
         if (staty[d.id_uzytkownika]) {
-          // Jeśli obecność została sprawdzona (obecny nie jest null/undefined)
           if (d.obecny === true) {
             staty[d.id_uzytkownika].obecny++;
             staty[d.id_uzytkownika].total++;
@@ -63,9 +63,14 @@ export default function ZarzadzanieCzlonkami() {
 
   return (
     <div style={{ marginTop: '20px', padding: '25px', border: '1px solid #e2e8f0', borderRadius: '12px', backgroundColor: '#ffffff', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
-      <h2 style={{ color: '#1e293b', marginBottom: '5px', fontSize: '20px' }}>Zarządzanie Członkami Zespołu 👥</h2>
+      <h2 style={{ color: '#1e293b', marginBottom: '20px', fontSize: '20px' }}>Zarządzanie Członkami i Frekwencja 👥</h2>
       
       {komunikat && <p style={{ color: '#10b981', fontWeight: '600', marginBottom: '15px' }}>{komunikat}</p>}
+
+      {/* WIDOK TOP FREKWENCJI (KADRA) */}
+      <TopFrekwencja />
+
+      <h3 style={{ margin: '0 0 15px 0', fontSize: '18px', color: '#1e293b' }}>Pełna lista członków i statystyki:</h3>
 
       {czlonkowie.length === 0 ? (
         <p style={{ color: '#718096' }}>Brak zatwierdzonych członków w systemie.</p>

@@ -1,6 +1,14 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import { pobierzStylSekcji } from './kolory';
+import TopFrekwencja from './TopFrekwencja'; // <-- Dodany import rankingu
+
+// Komponent do wyświetlania miniaturki zdjęcia
+const RenderAvatar = ({ url }) => (
+  <div style={{ width: '24px', height: '24px', borderRadius: '50%', backgroundColor: '#e2e8f0', overflow: 'hidden', display: 'flex', justifyContent: 'center', alignItems: 'center', flexShrink: 0 }}>
+    {url ? <img src={url} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: '12px' }}>👤</span>}
+  </div>
+);
 
 export default function PodgladObecnosciCzlonka({ profile }) {
   const [proby, setProby] = useState([]);
@@ -27,10 +35,10 @@ export default function PodgladObecnosciCzlonka({ profile }) {
       pobierzDeklaracjeIZasoby(probyData);
     }
 
-    // 2. Pobierz głównych członków z tej samej sekcji (wraz z polem glos)
+    // 2. Pobierz głównych członków z tej samej sekcji (wraz z awatarem i głosem)
     const { data: czlonkowieData } = await supabase
       .from('profiles')
-      .select('*')
+      .select('id, imie_nazwisko, sekcja, glos, avatar_url')
       .eq('status', 'zatwierdzony')
       .eq('rola', 'członek')
       .eq('sekcja', profile.sekcja)
@@ -51,7 +59,7 @@ export default function PodgladObecnosciCzlonka({ profile }) {
       const ids = dodatkoweData.map(d => d.id_uzytkownika);
       const { data: goscieData } = await supabase
         .from('profiles')
-        .select('*')
+        .select('id, imie_nazwisko, sekcja, glos, avatar_url')
         .in('id', ids)
         .eq('status', 'zatwierdzony')
         .order('imie_nazwisko', { ascending: true });
@@ -93,7 +101,8 @@ export default function PodgladObecnosciCzlonka({ profile }) {
 
     return (
       <li key={czlonek.id} style={{ padding: '8px 12px', backgroundColor: isGosc ? '#faf5ff' : '#f8fafc', borderRadius: '6px', border: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-        <span style={{ fontSize: '14px', fontWeight: '500', color: '#1e293b' }}>
+        <span style={{ fontSize: '14px', fontWeight: '500', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <RenderAvatar url={czlonek.avatar_url} />
           {czlonek.imie_nazwisko} 
           {isGosc && <span style={{ fontSize: '12px', color: '#8b5cf6', fontWeight: '600' }}> (Gościnnie z: {czlonek.sekcja})</span>}
           {czlonek.id === profile.id && ' (Ty)'}
@@ -116,7 +125,11 @@ export default function PodgladObecnosciCzlonka({ profile }) {
 
   return (
     <div style={{ marginTop: '20px', padding: '25px', border: '1px solid #e2e8f0', borderRadius: '12px', backgroundColor: '#ffffff', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
-      <h2 style={{ color: '#1e293b', marginBottom: '5px', fontSize: '20px' }}>Sprawdź obecność w sekcji</h2>
+      
+      {/* SEKCJA: TOP FREKWENCJA */}
+      <TopFrekwencja />
+
+      <h2 style={{ color: '#1e293b', marginBottom: '5px', fontSize: '20px', marginTop: '30px' }}>Sprawdź obecność w sekcji</h2>
       <p style={{ color: '#64748b', fontSize: '14px', marginBottom: '20px' }}>
         Podgląd deklaracji obecności Twojej sekcji: <strong style={{ textTransform: 'uppercase', color: '#0f172a' }}>{profile.sekcja}</strong>
       </p>
