@@ -9,11 +9,19 @@ export default function Harmonogram({ profile }) {
   const [usprawiedliwienia, setUsprawiedliwienia] = useState({}); // id_proby -> tekst
   const [aktywneInputyUsprawiedliwienia, setAktywneInputyUsprawiedliwienia] = useState({}); // id_proby -> tekst wpisywany w input
 
-  // Formularz dodawania próby (Tylko kierownik / pracownik)
+  // Formularz dodawania pojedynczej próby (Tylko kierownik / pracownik)
   const [dataCzas, setDataCzas] = useState('');
   const [sekcja, setSekcja] = useState('balet');
   const [opisCwiczen, setOpisCwiczen] = useState('');
   const [komunikat, setKomunikat] = useState('');
+
+  // Formularz prób cyklicznych (Tylko kierownik / pracownik)
+  const [dataOd, setDataOd] = useState('');
+  const [dataDo, setDataDo] = useState('');
+  const [wybranyDzieńTygodnia, setWybranyDzieńTygodnia] = useState('1'); // 1 = poniedziałek
+  const [godzinaProby, setGodzinaProby] = useState('18:00');
+  const [sekcjaCykliczna, setSekcjaCykliczna] = useState('balet');
+  const [opisCykliczny, setOpisCykliczny] = useState('');
 
   useEffect(() => {
     if (profile) {
@@ -116,6 +124,55 @@ export default function Harmonogram({ profile }) {
     }
   };
 
+  // Generator prób cyklicznych
+  const dodajProbyCykliczne = async (e) => {
+    e.preventDefault();
+    if (!dataOd || !dataDo) {
+      alert('Wypełnij datę początkową i końcową.');
+      return;
+    }
+
+    const start = new Date(dataOd);
+    const end = new Date(dataDo);
+    const targetDay = parseInt(wybranyDzieńTygodnia); // 0 (niedziela) do 6 (sobota)
+
+    let current = new Date(start);
+    let wygenerowaneDaty = [];
+
+    while (current <= end) {
+      if (current.getDay() === targetDay) {
+        const [godz, min] = godzinaProby.split(':');
+        const dataZGodzina = new Date(current);
+        dataZGodzina.setHours(parseInt(godz), parseInt(min), 0, 0);
+
+        wygenerowaneDaty.push({
+          data_czas: dataZGodzina.toISOString(),
+          sekcja: sekcjaCykliczna,
+          opis_cwiczen: opisCykliczny || 'Próba cykliczna'
+        });
+      }
+      current.setDate(current.getDate() + 1);
+    }
+
+    if (wygenerowaneDaty.length === 0) {
+      alert('Brak dni spełniających kryteria w podanym zakresie.');
+      return;
+    }
+
+    const { error } = await supabase.from('proby').insert(wygenerowaneDaty);
+
+    if (error) {
+      setKomunikat('Błąd cykliczny: ' + error.message);
+    } else {
+      setKomunikat(`Wygenerowano ${wygenerowaneDaty.length} prób cyklicznych! ✅`);
+      setDataOd('');
+      setDataDo('');
+      setOpisCykliczny('');
+      pobierzProby();
+      setTimeout(() => setKomunikat(''), 4000);
+    }
+  };
+
   const usunProbe = async (id) => {
     if (!window.confirm('Czy na pewno chcesz usunąć tę próbę?')) return;
     
@@ -174,49 +231,129 @@ export default function Harmonogram({ profile }) {
     }
   };
 
+  const isKadra = profile.rola === 'kierownik' || profile.rola === 'pracownik';
+
   return (
     <div style={{ marginTop: '20px', padding: '25px', border: '1px solid #e2e8f0', borderRadius: '12px', backgroundColor: '#ffffff', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
       <h2 style={{ color: '#1e293b', marginBottom: '15px', fontSize: '20px' }}>Harmonogram Prób i Zgłoszenia</h2>
 
-      {/* Formularz dodawania próby (Tylko kierownik / pracownik) */}
-      {(profile.rola === 'kierownik' || profile.rola === 'pracownik') && (
-        <div style={{ marginBottom: '30px', padding: '20px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-          <h3 style={{ margin: '0 0 15px 0', fontSize: '16px', color: '#334155' }}>Zaplanuj nową próbę</h3>
-          <form onSubmit={dodajProbe} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <input 
-              type="datetime-local" 
-              value={dataCzas} 
-              onChange={(e) => setDataCzas(e.target.value)} 
-              required 
-              style={{ padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000' }}
-            />
-            
-            <select 
-              value={sekcja} 
-              onChange={(e) => setSekcja(e.target.value)} 
-              style={{ padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000' }}
-            >
-              <option value="balet">Sekcja: Balet</option>
-              <option value="chór">Sekcja: Chór</option>
-              <option value="kapela">Sekcja: Kapela</option>
-            </select>
+      {/* Formularze dodawania prób dla Kadry */}
+      {isKadra && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px', marginBottom: '30px' }}>
+          
+          {/* Pojedyncza próba */}
+          <div style={{ padding: '20px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+            <h3 style={{ margin: '0 0 15px 0', fontSize: '16px', color: '#334155' }}>Zaplanuj nową próbę</h3>
+            <form onSubmit={dodajProbe} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <input 
+                type="datetime-local" 
+                value={dataCzas} 
+                onChange={(e) => setDataCzas(e.target.value)} 
+                required 
+                style={{ padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000' }}
+              />
+              
+              <select 
+                value={sekcja} 
+                onChange={(e) => setSekcja(e.target.value)} 
+                style={{ padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000' }}
+              >
+                <option value="balet">Sekcja: Balet</option>
+                <option value="chór">Sekcja: Chór</option>
+                <option value="kapela">Sekcja: Kapela</option>
+              </select>
 
-            <textarea 
-              placeholder="Opis ćwiczeń (np. Praca nad suitą rzeszowską)" 
-              value={opisCwiczen} 
-              onChange={(e) => setOpisCwiczen(e.target.value)} 
-              rows="3"
-              required
-              style={{ padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000' }}
-            />
-            
-            <button type="submit" style={{ padding: '12px', backgroundColor: '#3182ce', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}>
-              Dodaj próbę do harmonogramu 📅
-            </button>
-          </form>
-          {komunikat && <p style={{ color: komunikat.includes('Błąd') ? '#dc3545' : 'green', marginTop: '10px', fontWeight: '500' }}>{komunikat}</p>}
+              <textarea 
+                placeholder="Opis ćwiczeń (np. Praca nad suitą rzeszowską)" 
+                value={opisCwiczen} 
+                onChange={(e) => setOpisCwiczen(e.target.value)} 
+                rows="3"
+                required
+                style={{ padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000' }}
+              />
+              
+              <button type="submit" style={{ padding: '12px', backgroundColor: '#3182ce', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}>
+                Dodaj próbę do harmonogramu 📅
+              </button>
+            </form>
+          </div>
+
+          {/* Próby cykliczne */}
+          <div style={{ padding: '20px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+            <h3 style={{ margin: '0 0 15px 0', fontSize: '16px', color: '#334155' }}>Generuj próby cykliczne 🔄</h3>
+            <form onSubmit={dodajProbyCykliczne} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input 
+                  type="date" 
+                  title="Data od"
+                  value={dataOd} 
+                  onChange={(e) => setDataOd(e.target.value)} 
+                  required 
+                  style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', fontSize: '13px' }}
+                />
+                <input 
+                  type="date" 
+                  title="Data do"
+                  value={dataDo} 
+                  onChange={(e) => setDataDo(e.target.value)} 
+                  required 
+                  style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', fontSize: '13px' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <select 
+                  value={wybranyDzieńTygodnia} 
+                  onChange={(e) => setWybranyDzieńTygodnia(e.target.value)}
+                  style={{ flex: 2, padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', fontSize: '13px' }}
+                >
+                  <option value="1">Poniedziałek</option>
+                  <option value="2">Wtorek</option>
+                  <option value="3">Środa</option>
+                  <option value="4">Czwartek</option>
+                  <option value="5">Piątek</option>
+                  <option value="6">Sobota</option>
+                  <option value="0">Niedziela</option>
+                </select>
+
+                <input 
+                  type="time" 
+                  value={godzinaProby} 
+                  onChange={(e) => setGodzinaProby(e.target.value)} 
+                  required 
+                  style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', fontSize: '13px' }}
+                />
+              </div>
+
+              <select 
+                value={sekcjaCykliczna} 
+                onChange={(e) => setSekcjaCykliczna(e.target.value)}
+                style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', fontSize: '13px' }}
+              >
+                <option value="balet">Sekcja: Balet</option>
+                <option value="chór">Sekcja: Chór</option>
+                <option value="kapela">Sekcja: Kapela</option>
+              </select>
+
+              <input 
+                type="text" 
+                placeholder="Opis / Program cyklu prób" 
+                value={opisCykliczny} 
+                onChange={(e) => setOpisCykliczny(e.target.value)} 
+                required 
+                style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', fontSize: '13px' }}
+              />
+
+              <button type="submit" style={{ padding: '10px', backgroundColor: '#8b5cf6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '13px' }}>
+                Generuj cykl prób ⚡
+              </button>
+            </form>
+          </div>
+
         </div>
       )}
+
+      {komunikat && <p style={{ color: komunikat.includes('Błąd') ? '#dc3545' : 'green', marginBottom: '15px', fontWeight: '500' }}>{komunikat}</p>}
 
       {/* Lista Prób */}
       <h3 style={{ fontSize: '16px', color: '#334155', marginBottom: '15px' }}>
