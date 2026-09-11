@@ -1,106 +1,190 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
+import { pobierzStylSekcji } from './kolory';
+
+const formatujWyswietlanie = (isoStr) => {
+  if (!isoStr) return '';
+  const d = new Date(isoStr);
+  return d.toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ', ' + d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
+};
 
 export default function MojaFrekwencja({ profile }) {
-  const [odbyteSprawdzoneProby, setOdbyteSprawdzoneProby] = useState([]);
-  const [mojeObecnosci, setMojeObecnosci] = useState([]);
-  const [ladowanie, setLadowanie] = useState(true);
+  const [proby, setProby] = useState([]);
+  const [mojeObecnosci, setMojeObecnosci] = useState({});
+  const [statystyki, setStatystyki] = useState({ obecny: 0, nieobecny: 0, total: 0 });
 
   useEffect(() => {
-    pobierzFrekwencje();
+    if (profile) {
+      pobierzMojaFrekwencje();
+
+      // Nasłuchiwanie na żywo - gdy kadra sprawdzi obecność, statystyki odświeżą się same
+      const subscription = supabase
+        .channel('zmiany_moja_frekwencja')
+        .on(
+          'postgres_changes', 
+          { event: '*', schema: 'public', table: 'deklaracje_obecnosci' }, 
+          (payload) => {
+            pobierzMojaFrekwencje(); 
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(subscription);
+      };
+    }
   }, [profile]);
 
-  const pobierzFrekwencje = async () => {
-    setLadowanie(true);
+  const pobierzMojaFrekwencje = async () => {
+    // 1. Sprawdzamy, do jakich sekcji należy użytkownik (główna + dodatkowe)
+    let sekcjeDoPobrania = [profile.sekcja];
+    const { data: dodatkowe } = await supabase
+      .from('dodatkowe_sekcje')
+      .select('sekcja')
+      .eq('id_uzytkownika', profile.id)
+      .eq('status', 'zatwierdzony');
+      
+    if (dodatkowe) {
+      dodatkowe.forEach(d => {
+        if (!sekcjeDoPobrania.includes(d.sekcja)) sekcjeDoPobrania.push(d.sekcja);
+      });
+    }
 
-    const teraz = new Date();
-
-    const { data: proby } = await supabase
+    // 2. Pobieramy wszystkie próby dla tych sekcji (od najnowszych do najstarszych)
+    const { data: probyData } = await supabase
       .from('proby')
       .select('*')
-      .eq('sekcja', profile.sekcja)
-      .lte('data_czas', teraz.toISOString())
+      .in('sekcja', sekcjeDoPobrania)
       .order('data_czas', { ascending: false });
 
-    if (!proby || proby.length === 0) {
-      setOdbyteSprawdzoneProby([]);
-      setLadowanie(false);
-      return;
+    // 3. Pobieramy deklaracje i faktyczne obecności TYLKO dla tego użytkownika
+    const { data: dekData } = await supabase
+      .from('deklaracje_obecnosci')
+      .select('id_proby, planuje, usprawiedliwienie, obecny')
+      .eq('id_uzytkownika', profile.id);
+
+    const mapa = {};
+    let ob = 0;
+    let nieob = 0;
+    let tot = 0;
+
+    if (dekData) {
+      dekData.forEach(d => {
+        mapa[d.id_proby] = d;
+        // LICZYMY FREKWENCJĘ TYLKO Z FAKTYCZNEJ OBECNOŚCI
+        if (d.obecny === true) {
+          ob++;
+          tot++;
+        } else if (d.obecny === false) {
+          nieob++;
+          tot++;
+        }
+      });
     }
 
-    const { data: wpisyFrekwencji } = await supabase
-      .from('frekwencja')
-      .select('id_proby, id_uzytkownika, obecny');
-
-    if (wpisyFrekwencji) {
-      const sprawdzoneProbyIds = [...new Set(wpisyFrekwencji.map(f => f.id_proby))];
-      const finalneProby = proby.filter(p => sprawdzoneProbyIds.includes(p.id));
-      
-      setOdbyteSprawdzoneProby(finalneProby);
-
-      const mojeFrek = wpisyFrekwencji
-        .filter(f => f.id_uzytkownika === profile.id && f.obecny === true)
-        .map(f => f.id_proby);
-
-      setMojeObecnosci(mojeFrek);
-    }
-
-    setLadowanie(false);
+    setProby(probyData || []);
+    setMojeObecnosci(mapa);
+    setStatystyki({ obecny: ob, nieobecny: nieob, total: tot });
   };
 
-  if (ladowanie) return <p style={{ color: '#64748b', textAlign: 'center', marginTop: '20px' }}>Ładowanie statystyk frekwencji...</p>;
-
-  const iloscWszystkichRozliczonych = odbyteSprawdzoneProby.length;
-  const iloscObecnosci = odbyteSprawdzoneProby.filter(p => mojeObecnosci.includes(p.id)).length;
-  const procent = iloscWszystkichRozliczonych > 0 ? Math.round((iloscObecnosci / iloscWszystkichRozliczonych) * 100) : 0;
+  const procentFrekwencji = statystyki.total > 0 
+    ? Math.round((statystyki.obecny / statystyki.total) * 100) 
+    : 0;
 
   return (
     <div style={{ marginTop: '20px', padding: '25px', border: '1px solid #e2e8f0', borderRadius: '12px', backgroundColor: '#ffffff', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
-      <h2 style={{ color: '#1e293b', marginBottom: '5px', fontSize: '20px' }}>Twoja Frekwencja</h2>
-      <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '20px' }}>
-        Sekcja: <strong>{profile.sekcja.toUpperCase()}</strong> | Statystyki uwzględniają wyłącznie zakończone i rozliczone próby.
-      </p>
+      <h2 style={{ color: '#1e293b', marginBottom: '15px', fontSize: '20px' }}>Moja Frekwencja i Rozliczenia 📊</h2>
       
-      {/* Podsumowanie / Statystyki */}
-      <div style={{ display: 'flex', gap: '20px', marginBottom: '25px', padding: '15px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-        <div>
-          <p style={{ margin: 0, fontSize: '14px', color: '#64748b' }}>Obecności:</p>
-          <p style={{ margin: '5px 0 0 0', fontSize: '20px', fontWeight: 'bold', color: '#10b981' }}>{iloscObecnosci} / {iloscWszystkichRozliczonych}</p>
+      {/* GŁÓWNE KAFELKI ZE STATYSTYKAMI */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '15px', marginBottom: '30px' }}>
+        <div style={{ padding: '20px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #cbd5e1', textAlign: 'center' }}>
+          <p style={{ margin: '0 0 5px 0', fontSize: '13px', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase' }}>Twój wynik</p>
+          <span style={{ fontSize: '32px', fontWeight: '900', color: procentFrekwencji >= 50 ? '#8b5cf6' : '#ef4444' }}>{procentFrekwencji}%</span>
         </div>
-        <div>
-          <p style={{ margin: 0, fontSize: '14px', color: '#64748b' }}>Procent obecności:</p>
-          <p style={{ margin: '5px 0 0 0', fontSize: '20px', fontWeight: 'bold', color: '#3182ce' }}>{procent}%</p>
+        
+        <div style={{ padding: '20px', backgroundColor: '#f0fdf4', borderRadius: '8px', border: '1px solid #a7f3d0', textAlign: 'center' }}>
+          <p style={{ margin: '0 0 5px 0', fontSize: '13px', color: '#047857', fontWeight: 'bold', textTransform: 'uppercase' }}>Sprawdzone jako Obecny</p>
+          <span style={{ fontSize: '32px', fontWeight: '900', color: '#10b981' }}>{statystyki.obecny}</span>
+        </div>
+
+        <div style={{ padding: '20px', backgroundColor: '#fef2f2', borderRadius: '8px', border: '1px solid #fecaca', textAlign: 'center' }}>
+          <p style={{ margin: '0 0 5px 0', fontSize: '13px', color: '#b91c1c', fontWeight: 'bold', textTransform: 'uppercase' }}>Sprawdzone jako Nieobecny</p>
+          <span style={{ fontSize: '32px', fontWeight: '900', color: '#ef4444' }}>{statystyki.nieobecny}</span>
         </div>
       </div>
 
-      {/* Szczegółowa historia rozliczonych prób */}
-      <h3 style={{ fontSize: '16px', color: '#334155', marginBottom: '15px' }}>Rozliczona historia prób</h3>
-      {odbyteSprawdzoneProby.length === 0 ? (
-        <p style={{ color: '#718096' }}>Brak zakończonych i rozliczonych prób dla Twojej sekcji.</p>
+      <h3 style={{ margin: '0 0 15px 0', fontSize: '16px', color: '#334155' }}>Rozliczenie poszczególnych prób ({proby.length}):</h3>
+
+      {proby.length === 0 ? (
+        <p style={{ color: '#718096' }}>Nie masz przypisanych żadnych prób.</p>
       ) : (
-        <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-          {odbyteSprawdzoneProby.map(proba => {
-            const czyObecny = mojeObecnosci.includes(proba.id);
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+          {proby.map(proba => {
+            const stylSekcji = pobierzStylSekcji(proba.sekcja);
+            const mojeDane = mojeObecnosci[proba.id] || {};
+            const { planuje, usprawiedliwienie, obecny } = mojeDane;
+
+            // Sprawdzamy, czy data próby już minęła, żeby określić komunikaty
+            const czyMinela = new Date(proba.data_czas) < new Date();
+
             return (
-              <li key={proba.id} style={{ padding: '12px 15px', backgroundColor: '#ffffff', marginBottom: '8px', borderRadius: '6px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <strong style={{ color: '#1e293b', fontSize: '14px' }}>{new Date(proba.data_czas).toLocaleString('pl-PL')}</strong>
-                  <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#475569' }}>{proba.opis_cwiczen}</p>
+              <div key={proba.id} style={{ 
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px',
+                borderLeft: `6px solid ${stylSekcji.glowny}`, padding: '15px', backgroundColor: stylSekcji.jasny, 
+                borderRadius: '8px', borderTop: `1px solid ${stylSekcji.border}`, borderRight: `1px solid ${stylSekcji.border}`, borderBottom: `1px solid ${stylSekcji.border}`
+              }}>
+                
+                {/* Informacje o samej próbie */}
+                <div style={{ flex: '1 1 300px' }}>
+                  <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: 'bold', backgroundColor: stylSekcji.glowny, color: 'white', marginBottom: '6px', textTransform: 'uppercase' }}>
+                    {proba.sekcja}
+                  </span>
+                  <h4 style={{ margin: '0 0 4px 0', color: '#1e293b', fontSize: '15px' }}>
+                    📅 {formatujWyswietlanie(proba.data_czas)}
+                  </h4>
+                  <p style={{ margin: 0, fontSize: '13px', color: '#475569' }}>
+                    <strong>Program:</strong> {proba.opis_cwiczen}
+                  </p>
                 </div>
-                <span style={{ 
-                  padding: '5px 12px', 
-                  borderRadius: '15px', 
-                  fontSize: '13px', 
-                  fontWeight: '600',
-                  backgroundColor: czyObecny ? '#d1e7dd' : '#f8d7da',
-                  color: czyObecny ? '#0f5132' : '#842029'
-                }}>
-                  {czyObecny ? 'Obecny ✅' : 'Nieobecny ❌'}
-                </span>
-              </li>
+
+                {/* Statusy weryfikacji i deklaracji */}
+                <div style={{ flex: '1 1 200px', display: 'flex', flexDirection: 'column', gap: '8px', borderLeft: '1px dashed #cbd5e1', paddingLeft: '15px' }}>
+                  
+                  {/* FAKTYCZNA OBECNOŚĆ (Decydująca) */}
+                  <div>
+                    <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 'bold', display: 'block', marginBottom: '2px' }}>Weryfikacja kadry:</span>
+                    {obecny === true ? (
+                      <span style={{ display: 'inline-block', padding: '4px 10px', backgroundColor: '#10b981', color: 'white', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold' }}>✅ Jesteś sprawdzony jako OBECNY</span>
+                    ) : obecny === false ? (
+                      <span style={{ display: 'inline-block', padding: '4px 10px', backgroundColor: '#ef4444', color: 'white', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold' }}>❌ Jesteś sprawdzony jako NIEOBECNY</span>
+                    ) : (
+                      <span style={{ display: 'inline-block', padding: '4px 10px', backgroundColor: '#e2e8f0', color: '#475569', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold' }}>
+                        {czyMinela ? '⏳ Oczekuje na sprawdzenie...' : '⏰ Próba w przyszłości'}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* DEKLARACJA (Dla podglądu członka) */}
+                  <div>
+                    <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 'bold', display: 'block', marginBottom: '2px' }}>Twoja deklaracja:</span>
+                    {planuje === true ? (
+                      <span style={{ fontSize: '12px', color: '#10b981', fontWeight: '600' }}>👍 Zadeklarowałeś obecność</span>
+                    ) : planuje === false ? (
+                      <div style={{ display: 'flex', flexDirection: 'column' }}>
+                        <span style={{ fontSize: '12px', color: '#ef4444', fontWeight: '600' }}>👎 Zgłosiłeś nieobecność</span>
+                        {usprawiedliwienie && <span style={{ fontSize: '11px', color: '#7f1d1d', fontStyle: 'italic' }}>Powód: "{usprawiedliwienie}"</span>}
+                      </div>
+                    ) : (
+                      <span style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic' }}>⚪ Brak deklaracji</span>
+                    )}
+                  </div>
+
+                </div>
+
+              </div>
             );
           })}
-        </ul>
+        </div>
       )}
     </div>
   );
