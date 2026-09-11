@@ -38,7 +38,6 @@ export default function Harmonogram({ profile }) {
     if (profile && profile.rola === 'członek') {
       if (profile.sekcja) sekcjeDoPobrania.push(profile.sekcja);
 
-      // Pobieramy także zatwierdzone dodatkowe sekcje użytkownika
       const { data: dodatkowe } = await supabase
         .from('dodatkowe_sekcje')
         .select('sekcja')
@@ -68,7 +67,6 @@ export default function Harmonogram({ profile }) {
         setProby(data);
       }
     } else {
-      // Kierownik/pracownik widzi wszystkie próby
       const { data, error } = await supabase
         .from('proby')
         .select('*')
@@ -124,7 +122,6 @@ export default function Harmonogram({ profile }) {
     }
   };
 
-  // Generator prób cyklicznych
   const dodajProbyCykliczne = async (e) => {
     e.preventDefault();
     if (!dataOd || !dataDo) {
@@ -134,7 +131,7 @@ export default function Harmonogram({ profile }) {
 
     const start = new Date(dataOd);
     const end = new Date(dataDo);
-    const targetDay = parseInt(wybranyDzieńTygodnia); // 0 (niedziela) do 6 (sobota)
+    const targetDay = parseInt(wybranyDzieńTygodnia);
 
     let current = new Date(start);
     let wygenerowaneDaty = [];
@@ -184,7 +181,6 @@ export default function Harmonogram({ profile }) {
     }
   };
 
-  // Zgłoszenie obecności lub nieobecności przez członka
   const zaktualizujDeklaracje = async (probaId, statusPlanuje) => {
     const noweUsprawiedliwienie = statusPlanuje === true ? null : (usprawiedliwienia[probaId] || null);
 
@@ -208,7 +204,6 @@ export default function Harmonogram({ profile }) {
     }
   };
 
-  // Zapisanie samego tekstu usprawiedliwienia
   const zapiszUsprawiedliwienie = async (probaId) => {
     const tekst = aktywneInputyUsprawiedliwienia[probaId] || '';
 
@@ -237,7 +232,6 @@ export default function Harmonogram({ profile }) {
     <div style={{ marginTop: '20px', padding: '25px', border: '1px solid #e2e8f0', borderRadius: '12px', backgroundColor: '#ffffff', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
       <h2 style={{ color: '#1e293b', marginBottom: '15px', fontSize: '20px' }}>Harmonogram Prób i Zgłoszenia</h2>
 
-      {/* Formularze dodawania prób dla Kadry */}
       {isKadra && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px', marginBottom: '30px' }}>
           
@@ -245,13 +239,16 @@ export default function Harmonogram({ profile }) {
           <div style={{ padding: '20px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
             <h3 style={{ margin: '0 0 15px 0', fontSize: '16px', color: '#334155' }}>Zaplanuj nową próbę</h3>
             <form onSubmit={dodajProbe} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <input 
-                type="datetime-local" 
-                value={dataCzas} 
-                onChange={(e) => setDataCzas(e.target.value)} 
-                required 
-                style={{ padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000' }}
-              />
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#64748b', marginBottom: '4px' }}>Data i godzina próby (kliknij, aby otworzyć kalendarz):</label>
+                <input 
+                  type="datetime-local" 
+                  value={dataCzas} 
+                  onChange={(e) => setDataCzas(e.target.value)} 
+                  required 
+                  style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', boxSizing: 'border-box', cursor: 'pointer' }}
+                />
+              </div>
               
               <select 
                 value={sekcja} 
@@ -283,46 +280,55 @@ export default function Harmonogram({ profile }) {
             <h3 style={{ margin: '0 0 15px 0', fontSize: '16px', color: '#334155' }}>Generuj próby cykliczne 🔄</h3>
             <form onSubmit={dodajProbyCykliczne} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <div style={{ display: 'flex', gap: '8px' }}>
-                <input 
-                  type="date" 
-                  title="Data od"
-                  value={dataOd} 
-                  onChange={(e) => setDataOd(e.target.value)} 
-                  required 
-                  style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', fontSize: '13px' }}
-                />
-                <input 
-                  type="date" 
-                  title="Data do"
-                  value={dataDo} 
-                  onChange={(e) => setDataDo(e.target.value)} 
-                  required 
-                  style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', fontSize: '13px' }}
-                />
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: '#64748b', marginBottom: '2px' }}>Od daty:</label>
+                  <input 
+                    type="date" 
+                    value={dataOd} 
+                    onChange={(e) => setDataOd(e.target.value)} 
+                    required 
+                    style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', fontSize: '12px', boxSizing: 'border-box', cursor: 'pointer' }}
+                  />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: '#64748b', marginBottom: '2px' }}>Do daty:</label>
+                  <input 
+                    type="date" 
+                    value={dataDo} 
+                    onChange={(e) => setDataDo(e.target.value)} 
+                    required 
+                    style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', fontSize: '12px', boxSizing: 'border-box', cursor: 'pointer' }}
+                  />
+                </div>
               </div>
 
               <div style={{ display: 'flex', gap: '8px' }}>
-                <select 
-                  value={wybranyDzieńTygodnia} 
-                  onChange={(e) => setWybranyDzieńTygodnia(e.target.value)}
-                  style={{ flex: 2, padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', fontSize: '13px' }}
-                >
-                  <option value="1">Poniedziałek</option>
-                  <option value="2">Wtorek</option>
-                  <option value="3">Środa</option>
-                  <option value="4">Czwartek</option>
-                  <option value="5">Piątek</option>
-                  <option value="6">Sobota</option>
-                  <option value="0">Niedziela</option>
-                </select>
-
-                <input 
-                  type="time" 
-                  value={godzinaProby} 
-                  onChange={(e) => setGodzinaProby(e.target.value)} 
-                  required 
-                  style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', fontSize: '13px' }}
-                />
+                <div style={{ flex: 2 }}>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: '#64748b', marginBottom: '2px' }}>Dzień tygodnia:</label>
+                  <select 
+                    value={wybranyDzieńTygodnia} 
+                    onChange={(e) => setWybranyDzieńTygodnia(e.target.value)}
+                    style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', fontSize: '12px', boxSizing: 'border-box' }}
+                  >
+                    <option value="1">Poniedziałek</option>
+                    <option value="2">Wtorek</option>
+                    <option value="3">Środa</option>
+                    <option value="4">Czwartek</option>
+                    <option value="5">Piątek</option>
+                    <option value="6">Sobota</option>
+                    <option value="0">Niedziela</option>
+                  </select>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: '#64748b', marginBottom: '2px' }}>Godzina:</label>
+                  <input 
+                    type="time" 
+                    value={godzinaProby} 
+                    onChange={(e) => setGodzinaProby(e.target.value)} 
+                    required 
+                    style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', fontSize: '12px', boxSizing: 'border-box' }}
+                  />
+                </div>
               </div>
 
               <select 
@@ -366,7 +372,7 @@ export default function Harmonogram({ profile }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {proby.map(proba => {
             const stylSekcji = pobierzStylSekcji(proba.sekcja);
-            const deklaracjaUzytkownika = deklaracje[proba.id]; // true, false lub undefined
+            const deklaracjaUzytkownika = deklaracje[proba.id];
 
             return (
               <div key={proba.id} style={{ 
@@ -413,7 +419,6 @@ export default function Harmonogram({ profile }) {
                   <strong>Program:</strong> {proba.opis_cwiczen}
                 </p>
 
-                {/* Panel deklaracji dla członka */}
                 {profile.rola === 'członek' && (
                   <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
@@ -423,32 +428,23 @@ export default function Harmonogram({ profile }) {
                         <button 
                           onClick={() => zaktualizujDeklaracje(proba.id, true)}
                           style={{ 
-                            padding: '8px 14px', 
-                            borderRadius: '20px', 
-                            border: '1px solid',
+                            padding: '8px 14px', borderRadius: '20px', border: '1px solid',
                             borderColor: deklaracjaUzytkownika === true ? '#10b981' : '#cbd5e1',
                             backgroundColor: deklaracjaUzytkownika === true ? '#10b981' : '#f8fafc',
                             color: deklaracjaUzytkownika === true ? '#ffffff' : '#475569',
-                            cursor: 'pointer', 
-                            fontWeight: 'bold', 
-                            fontSize: '13px'
+                            cursor: 'pointer', fontWeight: 'bold', fontSize: '13px'
                           }}
                         >
                           Będę 👍
                         </button>
-
                         <button 
                           onClick={() => zaktualizujDeklaracje(proba.id, false)}
                           style={{ 
-                            padding: '8px 14px', 
-                            borderRadius: '20px', 
-                            border: '1px solid',
+                            padding: '8px 14px', borderRadius: '20px', border: '1px solid',
                             borderColor: deklaracjaUzytkownika === false ? '#ef4444' : '#cbd5e1',
                             backgroundColor: deklaracjaUzytkownika === false ? '#ef4444' : '#f8fafc',
                             color: deklaracjaUzytkownika === false ? '#ffffff' : '#475569',
-                            cursor: 'pointer', 
-                            fontWeight: 'bold', 
-                            fontSize: '13px'
+                            cursor: 'pointer', fontWeight: 'bold', fontSize: '13px'
                           }}
                         >
                           Nie będzie 👎
@@ -456,7 +452,6 @@ export default function Harmonogram({ profile }) {
                       </div>
                     </div>
 
-                    {/* Dodatkowe okienko usprawiedliwienia */}
                     {deklaracjaUzytkownika === false && (
                       <div style={{ marginTop: '12px', padding: '12px', backgroundColor: '#fef2f2', borderRadius: '6px', border: '1px solid #fecaca' }}>
                         <p style={{ margin: '0 0 5px 0', fontSize: '13px', color: '#991b1b', fontWeight: '600' }}>
@@ -482,7 +477,6 @@ export default function Harmonogram({ profile }) {
                   </div>
                 )}
 
-                {/* Panel sprawdzania obecności i deklaracji dla kadry */}
                 {(profile.rola === 'kierownik' || profile.rola === 'pracownik') && (
                   <ListaObecnosci probaId={proba.id} sekcja={proba.sekcja} />
                 )}
