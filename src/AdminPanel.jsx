@@ -24,7 +24,6 @@ export default function AdminPanel() {
   };
 
   const fetchDodatkoweSekcje = async () => {
-    // Pobieramy dodatkowe sekcje oraz profile oddzielnie, aby uniknąć błędów łączenia kluczy obcych w Supabase
     const { data: sekcjeData, error: sekcjeErr } = await supabase
       .from('dodatkowe_sekcje')
       .select('*')

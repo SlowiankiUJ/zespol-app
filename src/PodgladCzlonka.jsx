@@ -33,7 +33,6 @@ export default function PodgladCzlonka({ profile }) {
     e.preventDefault();
     setLoading(true);
 
-    // Aktualizujemy tylko imię i nazwisko (główna sekcja jest zablokowana do edycji przez członka)
     const { error } = await supabase
       .from('profiles')
       .update({ imie_nazwisko: imieNazwisko })
@@ -84,7 +83,7 @@ export default function PodgladCzlonka({ profile }) {
         Zarządzaj swoimi danymi oraz prośbami o dostęp do dodatkowych sekcji w zespole.
       </p>
 
-      {/* Status i dane (główna sekcja widoczna tylko do odczytu) */}
+      {/* Status i dane (główna sekcja tylko do odczytu) */}
       <div style={{ marginBottom: '25px', padding: '15px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
         <p style={{ margin: '0 0 8px 0', fontSize: '14px', color: '#334155' }}>
           <strong>Rola w systemie:</strong> <span style={{ textTransform: 'capitalize', color: '#8b5cf6', fontWeight: 'bold' }}>{profile.rola}</span>

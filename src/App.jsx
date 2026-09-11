@@ -7,6 +7,7 @@ import MojaFrekwencja from './MojaFrekwencja';
 import PodgladCzlonka from './PodgladCzlonka';
 import PodgladObecnosciCzlonka from './PodgladObecnosciCzlonka';
 import Koncerty from './Koncerty';
+import ZarzadzanieCzlonkami from './ZarzadzanieCzlonkami';
 
 export default function App() {
   const [session, setSession] = useState(null);
@@ -50,7 +51,6 @@ export default function App() {
     }
   };
 
-  // Zabezpieczenie przed renderowaniem widoku zanim profil zostanie pobrany z bazy
   if (loading || (session && !profile)) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', fontFamily: 'sans-serif' }}>
@@ -63,7 +63,6 @@ export default function App() {
     return <Login />;
   }
 
-  // Jeśli profil czeka na akceptację administratora
   if (profile && profile.status === 'oczekujacy') {
     return (
       <div style={{ maxWidth: '500px', margin: '80px auto', padding: '30px', textAlign: 'center', backgroundColor: '#fff', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', fontFamily: 'sans-serif' }}>
@@ -151,6 +150,12 @@ export default function App() {
               📅 Harmonogram prób
             </button>
             <button 
+              onClick={() => setAktywnaZakladka('czlonkowie')}
+              style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'czlonkowie' ? '#3182ce' : '#f8fafc', color: aktywnaZakladka === 'czlonkowie' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}
+            >
+              👥 Członkowie
+            </button>
+            <button 
               onClick={() => setAktywnaZakladka('koncerty')}
               style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'koncerty' ? '#3182ce' : '#f8fafc', color: aktywnaZakladka === 'koncerty' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}
             >
@@ -160,7 +165,7 @@ export default function App() {
               onClick={() => setAktywnaZakladka('admin')}
               style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'admin' ? '#3182ce' : '#f8fafc', color: aktywnaZakladka === 'admin' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}
             >
-              🛠️ Panel kadry i członków
+              🛠️ Panel kadry i weryfikacji
             </button>
           </>
         )}
@@ -171,6 +176,10 @@ export default function App() {
         
         {aktywnaZakladka === 'harmonogram' && (
           <Harmonogram profile={profile} />
+        )}
+
+        {aktywnaZakladka === 'czlonkowie' && (profile?.rola === 'kierownik' || profile?.rola === 'pracownik') && (
+          <ZarzadzanieCzlonkami />
         )}
 
         {aktywnaZakladka === 'sprawdz_obecnosc' && profile?.rola === 'członek' && (
