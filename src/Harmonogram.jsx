@@ -3,6 +3,16 @@ import { supabase } from './supabaseClient';
 import { pobierzStylSekcji } from './kolory';
 import ListaObecnosci from './ListaObecnosci';
 
+// Funkcja wyciągająca wpisaną datę i godzinę bez żadnej konwersji stref czasowych
+const formatujDate = (dataString) => {
+  if (!dataString) return '';
+  const rok = dataString.substring(0, 4);
+  const mc = dataString.substring(5, 7);
+  const dzien = dataString.substring(8, 10);
+  const godzina = dataString.substring(11, 16);
+  return `${dzien}.${mc}.${rok}, ${godzina}`;
+};
+
 export default function Harmonogram({ profile }) {
   const [proby, setProby] = useState([]);
   const [deklaracje, setDeklaracje] = useState({});
@@ -43,85 +53,43 @@ export default function Harmonogram({ profile }) {
     if (profile && profile.rola === 'członek') {
       if (profile.sekcja) sekcjeDoPobrania.push(profile.sekcja);
 
-      const { data: dodatkowe } = await supabase
-        .from('dodatkowe_sekcje')
-        .select('sekcja')
-        .eq('id_uzytkownika', profile.id)
-        .eq('status', 'zatwierdzony');
+      const { data: dodatkowe } = await supabase.from('dodatkowe_sekcje').select('sekcja').eq('id_uzytkownika', profile.id).eq('status', 'zatwierdzony');
+      if (dodatkowe) dodatkowe.forEach(d => { if (!sekcjeDoPobrania.includes(d.sekcja)) sekcjeDoPobrania.push(d.sekcja); });
 
-      if (dodatkowe) {
-        dodatkowe.forEach(d => {
-          if (!sekcjeDoPobrania.includes(d.sekcja)) sekcjeDoPobrania.push(d.sekcja);
-        });
-      }
-
-      if (sekcjeDoPobrania.length === 0) {
-        setProby([]);
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from('proby')
-        .select('*')
-        .in('sekcja', sekcjeDoPobrania)
-        .order('data_czas', { ascending: true });
-
+      if (sekcjeDoPobrania.length === 0) { setProby([]); return; }
+      const { data, error } = await supabase.from('proby').select('*').in('sekcja', sekcjeDoPobrania).order('data_czas', { ascending: true });
       if (!error && data) setProby(data);
     } else {
-      const { data, error } = await supabase
-        .from('proby')
-        .select('*')
-        .order('data_czas', { ascending: true });
-
+      const { data, error } = await supabase.from('proby').select('*').order('data_czas', { ascending: true });
       if (!error && data) setProby(data);
     }
   };
 
   const pobierzMojeDeklaracje = async () => {
-    const { data, error } = await supabase
-      .from('deklaracje_obecnosci')
-      .select('id_proby, planuje, usprawiedliwienie')
-      .eq('id_uzytkownika', profile.id);
-
+    const { data, error } = await supabase.from('deklaracje_obecnosci').select('id_proby, planuje, usprawiedliwienie').eq('id_uzytkownika', profile.id);
     if (!error && data) {
-      const mapaPlanuje = {};
-      const mapaPowodow = {};
-      const mapaInputow = {};
-
+      const mapaPlanuje = {}; const mapaPowodow = {}; const mapaInputow = {};
       data.forEach(d => {
         mapaPlanuje[d.id_proby] = d.planuje;
-        if (d.usprawiedliwienie) {
-          mapaPowodow[d.id_proby] = d.usprawiedliwienie;
-          mapaInputow[d.id_proby] = d.usprawiedliwienie;
-        }
+        if (d.usprawiedliwienie) { mapaPowodow[d.id_proby] = d.usprawiedliwienie; mapaInputow[d.id_proby] = d.usprawiedliwienie; }
       });
-
-      setDeklaracje(mapaPlanuje);
-      setUsprawiedliwienia(mapaPowodow);
-      setAktywneInputyUsprawiedliwienia(mapaInputow);
+      setDeklaracje(mapaPlanuje); setUsprawiedliwienia(mapaPowodow); setAktywneInputyUsprawiedliwienia(mapaInputow);
     }
   };
 
   const dodajProbe = async (e) => {
     e.preventDefault();
     if (!dataProby) { alert('Wybierz datę z kalendarza.'); return; }
-
     setKomunikat('Dodawanie próby...');
-    // POPRAWKA: Konwersja lokalnego czasu na format zrozumiały dla bazy danych (ISO)
-    const pelnaDataCzas = new Date(`${dataProby}T${godzinaProby}:00`).toISOString();
 
-    const { error } = await supabase.from('proby').insert([
-      { data_czas: pelnaDataCzas, sekcja, opis_cwiczen: opisCwiczen }
-    ]);
+    // Sklejamy datę i godzinę jako surowy tekst
+    const pelnaDataCzas = `${dataProby}T${godzinaProby}:00`;
 
-    if (error) {
-      setKomunikat('Błąd: ' + error.message);
-    } else {
+    const { error } = await supabase.from('proby').insert([{ data_czas: pelnaDataCzas, sekcja, opis_cwiczen: opisCwiczen }]);
+    if (error) { setKomunikat('Błąd: ' + error.message); } else {
       setKomunikat('Próba dodana pomyślnie! ✅');
-      setDataProby('');
-      setOpisCwiczen('');
-      pobierzProby();
-      setTimeout(() => setKomunikat(''), 3000);
+      setDataProby(''); setOpisCwiczen('');
+      pobierzProby(); setTimeout(() => setKomunikat(''), 3000);
     }
   };
 
@@ -129,7 +97,6 @@ export default function Harmonogram({ profile }) {
     e.preventDefault();
     if (!dataOd || !dataDo) { alert('Wypełnij datę początkową i końcową.'); return; }
 
-    // POPRAWKA: Bezpieczne parsowanie dat, by uniknąć przesunięć o 1 dzień wstecz
     const [rokOd, mcOd, dzienOd] = dataOd.split('-');
     const [rokDo, mcDo, dzienDo] = dataDo.split('-');
     const start = new Date(rokOd, mcOd - 1, dzienOd);
@@ -141,12 +108,13 @@ export default function Harmonogram({ profile }) {
 
     while (current <= end) {
       if (current.getDay() === targetDay) {
-        const [godz, min] = godzinaProbyCyklicznej.split(':');
-        const dataZGodzina = new Date(current);
-        dataZGodzina.setHours(parseInt(godz), parseInt(min), 0, 0);
-
+        // Składamy datę tekstowo dla bazy danych
+        const r = current.getFullYear();
+        const m = String(current.getMonth() + 1).padStart(2, '0');
+        const d = String(current.getDate()).padStart(2, '0');
+        
         wygenerowaneDaty.push({
-          data_czas: dataZGodzina.toISOString(),
+          data_czas: `${r}-${m}-${d}T${godzinaProbyCyklicznej}:00`,
           sekcja: sekcjaCykliczna,
           opis_cwiczen: opisCykliczny || 'Próba cykliczna'
         });
@@ -157,14 +125,10 @@ export default function Harmonogram({ profile }) {
     if (wygenerowaneDaty.length === 0) { alert('Brak dni spełniających kryteria w podanym zakresie.'); return; }
 
     const { error } = await supabase.from('proby').insert(wygenerowaneDaty);
-
-    if (error) {
-      setKomunikat('Błąd cykliczny: ' + error.message);
-    } else {
+    if (error) { setKomunikat('Błąd cykliczny: ' + error.message); } else {
       setKomunikat(`Wygenerowano ${wygenerowaneDaty.length} prób cyklicznych! ✅`);
       setDataOd(''); setDataDo(''); setOpisCykliczny('');
-      pobierzProby();
-      setTimeout(() => setKomunikat(''), 4000);
+      pobierzProby(); setTimeout(() => setKomunikat(''), 4000);
     }
   };
 
@@ -175,70 +139,43 @@ export default function Harmonogram({ profile }) {
   };
 
   const rozpocznijEdycje = (proba) => {
-    const d = new Date(proba.data_czas);
-    const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString();
-    setEditDataProby(local.substring(0, 10));
-    setEditGodzinaProby(local.substring(11, 16));
+    // Odczyt surowego tekstu, bez modyfikacji
+    setEditDataProby(proba.data_czas.substring(0, 10));
+    setEditGodzinaProby(proba.data_czas.substring(11, 16));
     setEditSekcja(proba.sekcja);
     setEditOpisCwiczen(proba.opis_cwiczen || '');
     setEdycjaProbaId(proba.id);
   };
 
-  const anulujEdycje = () => {
-    setEdycjaProbaId(null);
-  };
+  const anulujEdycje = () => { setEdycjaProbaId(null); };
 
   const zapiszEdycje = async (probaId) => {
     if (!editDataProby || !editGodzinaProby) { alert('Uzupełnij datę i godzinę'); return; }
     
-    // POPRAWKA: Konwersja wyedytowanego czasu
-    const pelnaDataCzas = new Date(`${editDataProby}T${editGodzinaProby}:00`).toISOString();
+    // Zapis surowego tekstu
+    const pelnaDataCzas = `${editDataProby}T${editGodzinaProby}:00`;
 
     const { error } = await supabase.from('proby').update({
-      data_czas: pelnaDataCzas,
-      sekcja: editSekcja,
-      opis_cwiczen: editOpisCwiczen
+      data_czas: pelnaDataCzas, sekcja: editSekcja, opis_cwiczen: editOpisCwiczen
     }).eq('id', probaId);
 
-    if (error) {
-      alert('Błąd podczas zapisywania: ' + error.message);
-    } else {
-      setEdycjaProbaId(null);
-      pobierzProby();
-    }
+    if (error) alert('Błąd podczas zapisywania: ' + error.message);
+    else { setEdycjaProbaId(null); pobierzProby(); }
   };
 
   const zaktualizujDeklaracje = async (probaId, statusPlanuje) => {
     const noweUsprawiedliwienie = statusPlanuje === true ? null : (usprawiedliwienia[probaId] || null);
-
-    const { error } = await supabase
-      .from('deklaracje_obecnosci')
-      .upsert([
-        { id_proby: probaId, id_uzytkownika: profile.id, planuje: statusPlanuje, usprawiedliwienie: noweUsprawiedliwienie }
-      ], { onConflict: 'id_proby, id_uzytkownika' });
-
+    const { error } = await supabase.from('deklaracje_obecnosci').upsert([{ id_proby: probaId, id_uzytkownika: profile.id, planuje: statusPlanuje, usprawiedliwienie: noweUsprawiedliwienie }], { onConflict: 'id_proby, id_uzytkownika' });
     if (!error) {
       setDeklaracje(prev => ({ ...prev, [probaId]: statusPlanuje }));
-      if (statusPlanuje === true) {
-        setUsprawiedliwienia(prev => ({ ...prev, [probaId]: null }));
-        setAktywneInputyUsprawiedliwienia(prev => ({ ...prev, [probaId]: '' }));
-      }
+      if (statusPlanuje === true) { setUsprawiedliwienia(prev => ({ ...prev, [probaId]: null })); setAktywneInputyUsprawiedliwienia(prev => ({ ...prev, [probaId]: '' })); }
     }
   };
 
   const zapiszUsprawiedliwienie = async (probaId) => {
     const tekst = aktywneInputyUsprawiedliwienia[probaId] || '';
-
-    const { error } = await supabase
-      .from('deklaracje_obecnosci')
-      .upsert([
-        { id_proby: probaId, id_uzytkownika: profile.id, planuje: false, usprawiedliwienie: tekst }
-      ], { onConflict: 'id_proby, id_uzytkownika' });
-
-    if (!error) {
-      setUsprawiedliwienia(prev => ({ ...prev, [probaId]: tekst }));
-      alert('Usprawiedliwienie zapisane. ✅');
-    }
+    const { error } = await supabase.from('deklaracje_obecnosci').upsert([{ id_proby: probaId, id_uzytkownika: profile.id, planuje: false, usprawiedliwienie: tekst }], { onConflict: 'id_proby, id_uzytkownika' });
+    if (!error) { setUsprawiedliwienia(prev => ({ ...prev, [probaId]: tekst })); alert('Usprawiedliwienie zapisane. ✅'); }
   };
 
   const isKadra = profile.rola === 'kierownik' || profile.rola === 'pracownik';
@@ -352,7 +289,7 @@ export default function Harmonogram({ profile }) {
                           {proba.sekcja}
                         </span>
                         <h4 style={{ margin: '0 0 5px 0', color: '#1e293b', fontSize: '16px' }}>
-                          {new Date(proba.data_czas).toLocaleString('pl-PL')}
+                          📅 {formatujDate(proba.data_czas)}
                         </h4>
                       </div>
                       {isKadra && (

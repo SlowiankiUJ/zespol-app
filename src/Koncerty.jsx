@@ -1,6 +1,22 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 
+const formatujDate = (dataString) => {
+  if (!dataString) return '';
+  const rok = dataString.substring(0, 4);
+  const mc = dataString.substring(5, 7);
+  const dzien = dataString.substring(8, 10);
+  const godzina = dataString.substring(11, 16);
+  return `${dzien}.${mc}.${rok}, ${godzina}`;
+};
+
+// Funkcja pomocnicza do renderowania miniaturki
+const RenderAvatar = ({ url }) => (
+  <div style={{ width: '24px', height: '24px', borderRadius: '50%', backgroundColor: '#e2e8f0', overflow: 'hidden', display: 'flex', justifyContent: 'center', alignItems: 'center', flexShrink: 0 }}>
+    {url ? <img src={url} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: '12px' }}>👤</span>}
+  </div>
+);
+
 export default function Koncerty({ profile }) {
   const [koncerty, setKoncerty] = useState([]);
   const [deklaracjeKoncertow, setDeklaracjeKoncertow] = useState({});
@@ -52,7 +68,8 @@ export default function Koncerty({ profile }) {
     if (koncertIds.length === 0) return;
 
     const { data: dekData } = await supabase.from('deklaracje_koncerty').select('id, id_koncertu, id_uzytkownika, planuje, zakwalifikowany').in('id_koncertu', koncertIds);
-    const { data: profData } = await supabase.from('profiles').select('id, imie_nazwisko, sekcja, glos').eq('status', 'zatwierdzony');
+    // POBIERAMY avatar_url
+    const { data: profData } = await supabase.from('profiles').select('id, imie_nazwisko, sekcja, glos, avatar_url').eq('status', 'zatwierdzony');
 
     if (dekData && profData) {
       const profileMap = {}; profData.forEach(p => { profileMap[p.id] = p; });
@@ -93,8 +110,7 @@ export default function Koncerty({ profile }) {
     if (!dataKoncertu) { alert('Wybierz datę z kalendarza.'); return; }
     setKomunikat('Dodawanie koncertu...');
     
-    // POPRAWKA STREFY CZASOWEJ
-    const pelnaDataCzas = new Date(`${dataKoncertu}T${godzinaKoncertu}:00`).toISOString();
+    const pelnaDataCzas = `${dataKoncertu}T${godzinaKoncertu}:00`;
 
     const { error } = await supabase.from('koncerty').insert([{ tytul, data_czas: pelnaDataCzas, miejsce, program: programOpis }]);
     if (error) { setKomunikat('Błąd: ' + error.message); } else {
@@ -111,10 +127,8 @@ export default function Koncerty({ profile }) {
   };
 
   const rozpocznijEdycje = (koncert) => {
-    const d = new Date(koncert.data_czas);
-    const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString();
-    setEditDataKoncertu(local.substring(0, 10));
-    setEditGodzinaKoncertu(local.substring(11, 16));
+    setEditDataKoncertu(koncert.data_czas.substring(0, 10));
+    setEditGodzinaKoncertu(koncert.data_czas.substring(11, 16));
     setEditTytul(koncert.tytul);
     setEditMiejsce(koncert.miejsce);
     setEditProgramOpis(koncert.program || '');
@@ -125,14 +139,8 @@ export default function Koncerty({ profile }) {
 
   const zapiszEdycje = async (koncertId) => {
     if (!editDataKoncertu || !editGodzinaKoncertu) { alert('Uzupełnij datę i godzinę'); return; }
-    
-    // POPRAWKA STREFY CZASOWEJ
-    const pelnaDataCzas = new Date(`${editDataKoncertu}T${editGodzinaKoncertu}:00`).toISOString();
-
-    const { error } = await supabase.from('koncerty').update({
-      tytul: editTytul, data_czas: pelnaDataCzas, miejsce: editMiejsce, program: editProgramOpis
-    }).eq('id', koncertId);
-
+    const pelnaDataCzas = `${editDataKoncertu}T${editGodzinaKoncertu}:00`;
+    const { error } = await supabase.from('koncerty').update({ tytul: editTytul, data_czas: pelnaDataCzas, miejsce: editMiejsce, program: editProgramOpis }).eq('id', koncertId);
     if (error) alert('Błąd zapisu: ' + error.message);
     else { setEdycjaKoncertId(null); pobierzKoncerty(); }
   };
@@ -181,7 +189,7 @@ export default function Koncerty({ profile }) {
         <div style={{ marginBottom: '30px', padding: '20px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
           <h3 style={{ margin: '0 0 15px 0', fontSize: '16px', color: '#334155' }}>Zaplanuj nowy koncert</h3>
           <form onSubmit={dodajKoncert} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <input type="text" placeholder="Tytuł / Nazwa wydarzenia (np. Koncert Jubileuszowy)" value={tytul} onChange={(e) => setTytuł(e.target.value)} required style={{ padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px' }} />
+            <input type="text" placeholder="Tytuł (np. Koncert Jubileuszowy)" value={tytul} onChange={(e) => setTytuł(e.target.value)} required style={{ padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px' }} />
             <div style={{ display: 'flex', gap: '8px' }}>
               <div style={{ flex: 2 }}>
                 <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#64748b', marginBottom: '3px' }}>Data (kliknij po kalendarz):</label>
@@ -192,9 +200,9 @@ export default function Koncerty({ profile }) {
                 <input type="time" value={godzinaKoncertu} onChange={(e) => setGodzinaKoncertu(e.target.value)} onClick={(e) => e.target.showPicker && e.target.showPicker()} required style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', cursor: 'pointer', fontSize: '14px' }} />
               </div>
             </div>
-            <input type="text" placeholder="Miejsce (np. Filharmonia Krakowska)" value={miejsce} onChange={(e) => setMiejsce(e.target.value)} required style={{ padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px' }} />
-            <textarea placeholder="Ogólny opis / uwagi do koncertu" value={programOpis} onChange={(e) => setProgramOpis(e.target.value)} rows="2" style={{ padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px' }} />
-            <button type="submit" style={{ padding: '12px', backgroundColor: '#3182ce', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}>Dodaj koncert do kalendarza 🎫</button>
+            <input type="text" placeholder="Miejsce" value={miejsce} onChange={(e) => setMiejsce(e.target.value)} required style={{ padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px' }} />
+            <textarea placeholder="Ogólny opis" value={programOpis} onChange={(e) => setProgramOpis(e.target.value)} rows="2" style={{ padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px' }} />
+            <button type="submit" style={{ padding: '12px', backgroundColor: '#3182ce', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}>Dodaj koncert 🎫</button>
           </form>
           {komunikat && <p style={{ color: komunikat.includes('Błąd') ? '#dc3545' : 'green', marginTop: '10px', fontWeight: '500' }}>{komunikat}</p>}
         </div>
@@ -203,7 +211,7 @@ export default function Koncerty({ profile }) {
       <h3 style={{ fontSize: '16px', color: '#334155', marginBottom: '15px' }}>Nadchodzące koncerty ({koncerty.length})</h3>
       
       {koncerty.length === 0 ? (
-        <p style={{ color: '#718096' }}>Brak zaplanowanych koncertów w systemie.</p>
+        <p style={{ color: '#718096' }}>Brak zaplanowanych koncertów.</p>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {koncerty.map(koncert => {
@@ -243,7 +251,7 @@ export default function Koncerty({ profile }) {
                       <div>
                         <h4 style={{ margin: '0 0 5px 0', color: '#1e293b', fontSize: '18px' }}>{koncert.tytul}</h4>
                         <p style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#475569' }}>
-                          📅 <strong>{new Date(koncert.data_czas).toLocaleString('pl-PL')}</strong> | 📍 {koncert.miejsce}
+                          📅 <strong>{formatujDate(koncert.data_czas)}</strong> | 📍 {koncert.miejsce}
                         </p>
                       </div>
                       {(profile.rola === 'kierownik' || profile.rola === 'pracownik') && (
@@ -258,9 +266,7 @@ export default function Koncerty({ profile }) {
                     {profile.rola === 'członek' && (
                       <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
-                          <span style={{ fontSize: '14px', fontWeight: '600', color: '#1e293b' }}>
-                            Twoja deklaracja (Sekcja: <strong style={{ textTransform: 'uppercase' }}>{profile.sekcja}</strong>):
-                          </span>
+                          <span style={{ fontSize: '14px', fontWeight: '600', color: '#1e293b' }}>Twoja deklaracja (Sekcja: <strong style={{ textTransform: 'uppercase' }}>{profile.sekcja}</strong>):</span>
                           <div style={{ display: 'flex', gap: '8px' }}>
                             <button onClick={() => zaktualizujDeklaracjeKoncertu(koncert.id, true)} style={{ padding: '8px 14px', borderRadius: '20px', border: '1px solid', borderColor: deklaracjaUzytkownika === true ? '#10b981' : '#cbd5e1', backgroundColor: deklaracjaUzytkownika === true ? '#10b981' : '#f8fafc', color: deklaracjaUzytkownika === true ? '#ffffff' : '#475569', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}>Wezmę udział 👍</button>
                             <button onClick={() => zaktualizujDeklaracjeKoncertu(koncert.id, false)} style={{ padding: '8px 14px', borderRadius: '20px', border: '1px solid', borderColor: deklaracjaUzytkownika === false ? '#ef4444' : '#cbd5e1', backgroundColor: deklaracjaUzytkownika === false ? '#ef4444' : '#f8fafc', color: deklaracjaUzytkownika === false ? '#ffffff' : '#475569', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}>Nie mogę 👎</button>
@@ -287,11 +293,7 @@ export default function Koncerty({ profile }) {
                                 {['Sopran', 'Alt', 'Tenor', 'Bas'].map(glosName => {
                                   const osobyGlosu = chor.filter(o => (o.glos || 'Sopran') === glosName);
                                   if (osobyGlosu.length === 0) return null;
-                                  return (
-                                    <div key={glosName} style={{ marginTop: '10px', paddingLeft: '10px' }}>
-                                      {renderujListeOsobek(`• ${glosName}`, osobyGlosu, koncert.id, profile, zmienKwalifikacje, true)}
-                                    </div>
-                                  );
+                                  return <div key={glosName} style={{ marginTop: '10px', paddingLeft: '10px' }}>{renderujListeOsobek(`• ${glosName}`, osobyGlosu, koncert.id, profile, zmienKwalifikacje, true)}</div>;
                                 })}
                                 {chor.length === 0 && <p style={{ fontSize: '13px', color: '#94a3b8', margin: '0' }}>Brak zgłoszeń w chórze</p>}
                               </div>
@@ -303,12 +305,12 @@ export default function Koncerty({ profile }) {
                               <h5 style={{ margin: '0 0 10px 0', fontSize: '15px', color: '#1e293b' }}>Program i występy w układach:</h5>
                               {(profile.rola === 'kierownik' || profile.rola === 'pracownik') && (
                                 <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', backgroundColor: '#f8fafc', padding: '10px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                                  <input type="text" placeholder="Wpisz nowy układ/piosenkę (np. Tańce rzeszowskie)" value={noweUklady[koncert.id] || ''} onChange={(e) => setNoweUklady({ ...noweUklady, [koncert.id]: e.target.value })} style={{ flex: 1, padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '13px' }} />
+                                  <input type="text" placeholder="Wpisz układ (np. Tańce rzeszowskie)" value={noweUklady[koncert.id] || ''} onChange={(e) => setNoweUklady({ ...noweUklady, [koncert.id]: e.target.value })} style={{ flex: 1, padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '13px' }} />
                                   <button onClick={() => dodajPunktProgramu(koncert.id)} style={{ padding: '8px 14px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}>Dodaj układ ➕</button>
                                 </div>
                               )}
                               {programyDlaKoncertu.length === 0 ? (
-                                <p style={{ fontSize: '13px', color: '#718096' }}>Brak zdefiniowanych układów w programie tego koncertu.</p>
+                                <p style={{ fontSize: '13px', color: '#718096' }}>Brak zdefiniowanych układów.</p>
                               ) : (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
                                   {programyDlaKoncertu.map((prog, index) => {
@@ -323,26 +325,28 @@ export default function Koncerty({ profile }) {
                                             <button onClick={() => usunPunktProgramu(prog.id)} style={{ padding: '2px 6px', backgroundColor: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: '4px', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold' }}>Usuń układ ❌</button>
                                           )}
                                         </div>
-                                        <p style={{ fontSize: '13px', color: '#475569', margin: '4px 0 10px 0' }}><strong>Obsada:</strong> {osobyWpisu.length === 0 ? <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>Brak osób w obsadzie</span> : osobyWpisu.map(o => o.imie_nazwisko).join(', ')}</p>
-                                        {(profile.rola === 'kierownik' || profile.rola === 'pracownik') && (
+                                        
+                                        <p style={{ fontSize: '13px', color: '#475569', margin: '4px 0 10px 0' }}><strong>Obsada:</strong></p>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
+                                            {osobyWpisu.length === 0 ? <span style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '13px' }}>Brak osób w obsadzie</span> : osobyWpisu.map(o => (
+                                              <span key={o.id_uzytkownika} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '4px 10px', backgroundColor: '#fff', borderRadius: '20px', fontSize: '13px', color: '#334155', border: '1px solid #e2e8f0' }}>
+                                                <RenderAvatar url={o.avatar_url} />
+                                                {o.imie_nazwisko}
+                                                {(profile.rola === 'kierownik' || profile.rola === 'pracownik') && (
+                                                  <button onClick={() => usunZObsady(prog.id, o.id_uzytkownika)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontWeight: 'bold', fontSize: '14px', padding: '0 0 0 4px' }}>×</button>
+                                                )}
+                                              </span>
+                                            ))}
+                                        </div>
+
+                                        {(profile.rola === 'kierownik' || profile.rola === 'pracownik') && wolniDoObsadzenia.length > 0 && (
                                           <div style={{ marginTop: '8px', borderTop: '1px dashed #cbd5e1', paddingTop: '8px' }}>
-                                            <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#64748b' }}>Zarządzaj obsadą układu:</span>
-                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '4px' }}>
-                                              {osobyWpisu.map(osoba => (
-                                                <span key={osoba.id_uzytkownika} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 8px', backgroundColor: '#e2e8f0', borderRadius: '12px', fontSize: '12px', color: '#334155' }}>
-                                                  {osoba.imie_nazwisko}
-                                                  <button onClick={() => usunZObsady(prog.id, osoba.id_uzytkownika)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontWeight: 'bold', fontSize: '12px', padding: 0 }}>×</button>
-                                                </span>
-                                              ))}
+                                            <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
+                                              <select id={`select-osoba-${prog.id}`} style={{ padding: '4px', fontSize: '12px', borderRadius: '4px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000' }}>
+                                                {wolniDoObsadzenia.map(osoba => (<option key={osoba.id_uzytkownika} value={osoba.id_uzytkownika}>{osoba.imie_nazwisko} ({osoba.sekcja}{osoba.glos ? ` - ${osoba.glos}` : ''})</option>))}
+                                              </select>
+                                              <button onClick={() => { const sel = document.getElementById(`select-osoba-${prog.id}`); if (sel && sel.value) przypiszDoObsady(prog.id, sel.value); }} style={{ padding: '3px 8px', backgroundColor: '#3182ce', color: 'white', border: 'none', borderRadius: '4px', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}>Dodaj do układu ➕</button>
                                             </div>
-                                            {wolniDoObsadzenia.length > 0 && (
-                                              <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
-                                                <select id={`select-osoba-${prog.id}`} style={{ padding: '4px', fontSize: '12px', borderRadius: '4px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000' }}>
-                                                  {wolniDoObsadzenia.map(osoba => (<option key={osoba.id_uzytkownika} value={osoba.id_uzytkownika}>{osoba.imie_nazwisko} ({osoba.sekcja}{osoba.glos ? ` - ${osoba.glos}` : ''})</option>))}
-                                                </select>
-                                                <button onClick={() => { const sel = document.getElementById(`select-osoba-${prog.id}`); if (sel && sel.value) przypiszDoObsady(prog.id, sel.value); }} style={{ padding: '3px 8px', backgroundColor: '#3182ce', color: 'white', border: 'none', borderRadius: '4px', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}>Dodaj do układu ➕</button>
-                                              </div>
-                                            )}
                                           </div>
                                         )}
                                       </div>
@@ -366,9 +370,7 @@ export default function Koncerty({ profile }) {
   );
 }
 
-function aktywnaTab(val) {
-  return val || 'sklad';
-}
+function aktywnaTab(val) { return val || 'sklad'; }
 
 function renderujListeOsobek(tytulSekcji, listaOsob, koncertId, profile, naZmienKwalifikacje, isPodgrupa = false) {
   const zakwalifikowani = listaOsob.filter(o => o.zakwalifikowany === true);
@@ -389,8 +391,11 @@ function renderujListeOsobek(tytulSekcji, listaOsob, koncertId, profile, naZmien
               <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#10b981' }}>🟢 Zakwalifikowani ({zakwalifikowani.length}):</span>
               <ul style={{ margin: '2px 0 6px 15px', paddingLeft: '10px', fontSize: '13px', color: '#334155' }}>
                 {zakwalifikowani.map(osoba => (
-                  <li key={osoba.id_uzytkownika} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px', padding: '3px 6px', backgroundColor: '#f0fdf4', borderRadius: '4px' }}>
-                    <span>{osoba.imie_nazwisko} {osoba.id_uzytkownika === profile.id && '(Ty)'}</span>
+                  <li key={osoba.id_uzytkownika} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', padding: '4px 8px', backgroundColor: '#f0fdf4', borderRadius: '4px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <RenderAvatar url={osoba.avatar_url} />
+                      <span>{osoba.imie_nazwisko} {osoba.id_uzytkownika === profile.id && '(Ty)'}</span>
+                    </div>
                     {isKadra && (
                       <button onClick={() => naZmienKwalifikacje(koncertId, osoba.id_uzytkownika, false)} style={{ padding: '2px 6px', backgroundColor: '#fef3c7', color: '#92400e', border: 'none', borderRadius: '4px', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold' }}>Rezerwa ⏳</button>
                     )}
@@ -404,10 +409,13 @@ function renderujListeOsobek(tytulSekcji, listaOsob, koncertId, profile, naZmien
               <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#d97706' }}>⏳ Lista rezerwowa ({rezerwa.length}):</span>
               <ul style={{ margin: '2px 0 0 15px', paddingLeft: '10px', fontSize: '13px', color: '#334155' }}>
                 {rezerwa.map(osoba => (
-                  <li key={osoba.id_uzytkownika} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px', padding: '3px 6px', backgroundColor: '#fffbeb', borderRadius: '4px' }}>
-                    <span>{osoba.imie_nazwisko} {osoba.id_uzytkownika === profile.id && '(Ty)'}</span>
+                  <li key={osoba.id_uzytkownika} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', padding: '4px 8px', backgroundColor: '#fffbeb', borderRadius: '4px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <RenderAvatar url={osoba.avatar_url} />
+                      <span>{osoba.imie_nazwisko} {osoba.id_uzytkownika === profile.id && '(Ty)'}</span>
+                    </div>
                     {isKadra && (
-                      <button onClick={() => naZmienKwalifikacje(koncertId, osoba.id_uzytkownika, true)} style={{ padding: '2px 6px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '4px', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold' }}>Zakwalifikuj ✔️</button>
+                      <button onClick={() => naZmienKwalifikacje(koncertId, osoba.id_uzytkownika, true)} style={{ padding: '3px 6px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '4px', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold' }}>Zakwalifikuj ✔️</button>
                     )}
                   </li>
                 ))}
