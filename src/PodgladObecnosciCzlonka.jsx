@@ -5,7 +5,7 @@ import { pobierzStylSekcji } from './kolory';
 export default function PodgladObecnosciCzlonka({ profile }) {
   const [proby, setProby] = useState([]);
   const [czlonkowieSekcji, setCzlonkowieSekcji] = useState([]);
-  const [deklaracje, setDeklaracje] = useState({}); // id_proby -> { id_uzytkownika: { planuje, usprawiedliwienie } }
+  const [deklaracje, setDeklaracje] = useState({});
 
   useEffect(() => {
     if (profile && profile.sekcja) {
@@ -14,7 +14,6 @@ export default function PodgladObecnosciCzlonka({ profile }) {
   }, [profile]);
 
   const pobierzDaneDlaSekcji = async () => {
-    // 1. Pobierz próby tylko dla sekcji członka
     const { data: probyData } = await supabase
       .from('proby')
       .select('*')
@@ -26,7 +25,6 @@ export default function PodgladObecnosciCzlonka({ profile }) {
       pobierzDeklaracjeIZasoby(probyData);
     }
 
-    // 2. Pobierz zatwierdzonych członków z tej samej sekcji
     const { data: czlonkowieData } = await supabase
       .from('profiles')
       .select('*')
