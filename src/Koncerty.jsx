@@ -40,6 +40,8 @@ export default function Koncerty({ profile }) {
   const [editMiejsce, setEditMiejsce] = useState('');
   const [editProgramOpis, setEditProgramOpis] = useState('');
 
+  const isKierownik = profile?.rola === 'kierownik';
+
   useEffect(() => {
     if (profile) pobierzKoncerty();
   }, [profile]);
@@ -116,7 +118,6 @@ export default function Koncerty({ profile }) {
     } else {
       setKomunikat('Koncert dodany pomyślnie! ✅ Wysyłam powiadomienie...');
       
-     // WYSYŁANIE POWIADOMIENIA PUSH
       try {
         await fetch("/api/powiadomienie", {
           method: "POST",
@@ -205,7 +206,8 @@ export default function Koncerty({ profile }) {
     <div style={{ marginTop: '20px', padding: '25px', border: '1px solid #e2e8f0', borderRadius: '12px', backgroundColor: '#ffffff', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
       <h2 style={{ color: '#1e293b', marginBottom: '15px', fontSize: '20px' }}>Koncerty i Wydarzenia 🎻</h2>
 
-      {(profile.rola === 'kierownik' || profile.rola === 'pracownik') && (
+      {/* Formularz dodawania koncertu - TYLKO DLA KIEROWNIKA */}
+      {isKierownik && (
         <div style={{ marginBottom: '30px', padding: '20px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
           <h3 style={{ margin: '0 0 15px 0', fontSize: '16px', color: '#334155' }}>Zaplanuj nowy koncert</h3>
           <form onSubmit={dodajKoncert} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -264,7 +266,7 @@ export default function Koncerty({ profile }) {
 
             return (
               <div key={koncert.id} style={{ borderLeft: '6px solid #8b5cf6', padding: '20px', backgroundColor: '#faf5ff', borderRadius: '8px', borderTop: '1px solid #e9d5ff', borderRight: '1px solid #e9d5ff', borderBottom: '1px solid #e9d5ff', boxShadow: '0 2px 4px rgba(0,0,0,0.01)' }}>
-                {czyEdytowany ? (
+                {isKierownik && czyEdytowany ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', backgroundColor: '#fff', padding: '15px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
                     <h4 style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#1e293b' }}>Edycja koncertu:</h4>
                     <input type="text" value={editTytul} onChange={(e) => setEditTytul(e.target.value)} placeholder="Tytuł" style={inputStyle} />
@@ -288,7 +290,8 @@ export default function Koncerty({ profile }) {
                           📅 <strong>{formatujDate(koncert.data_czas)}</strong> | 📍 {koncert.miejsce}
                         </p>
                       </div>
-                      {(profile.rola === 'kierownik' || profile.rola === 'pracownik') && (
+                      {/* Przyciski edycji/usuwania - TYLKO DLA KIEROWNIKA */}
+                      {isKierownik && (
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                           <button onClick={() => rozpocznijEdycje(koncert)} style={{ padding: '5px 10px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>Edytuj ✏️</button>
                           <button onClick={() => usunKoncert(koncert.id)} style={{ padding: '5px 10px', backgroundColor: '#ef4444', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>Usuń 🗑️</button>
@@ -337,7 +340,8 @@ export default function Koncerty({ profile }) {
                           {podzakladka === 'program' && (
                             <div>
                               <h5 style={{ margin: '0 0 10px 0', fontSize: '15px', color: '#1e293b' }}>Program i występy w układach:</h5>
-                              {(profile.rola === 'kierownik' || profile.rola === 'pracownik') && (
+                              {/* Dodawanie układu - TYLKO DLA KIEROWNIKA */}
+                              {isKierownik && (
                                 <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', backgroundColor: '#f8fafc', padding: '10px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
                                   <input type="text" placeholder="Wpisz układ (np. Tańce rzeszowskie)" value={noweUklady[koncert.id] || ''} onChange={(e) => setNoweUklady({ ...noweUklady, [koncert.id]: e.target.value })} style={{ flex: 1, padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box' }} />
                                   <button onClick={() => dodajPunktProgramu(koncert.id)} style={{ padding: '8px 14px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}>Dodaj układ ➕</button>
@@ -355,25 +359,28 @@ export default function Koncerty({ profile }) {
                                       <div key={prog.id} style={{ padding: '12px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                                           <h6 style={{ margin: 0, fontSize: '14px', color: '#1e293b', fontWeight: 'bold' }}>{index + 1}. {prog.tytul_ukladu}</h6>
-                                          {(profile.rola === 'kierownik' || profile.rola === 'pracownik') && (
+                                          {/* Usuwanie układu - TYLKO DLA KIEROWNIKA */}
+                                          {isKierownik && (
                                             <button onClick={() => usunPunktProgramu(prog.id)} style={{ padding: '2px 6px', backgroundColor: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: '4px', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold' }}>Usuń układ ❌</button>
                                           )}
                                         </div>
                                         
                                         <p style={{ fontSize: '13px', color: '#475569', margin: '4px 0 10px 0' }}><strong>Obsada:</strong></p>
                                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
-                                            {osobyWpisu.length === 0 ? <span style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '13px' }}>Brak osób w obsadzie</span> : osobyWpisu.map(o => (
-                                              <span key={o.id_uzytkownika} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '4px 10px', backgroundColor: '#fff', borderRadius: '20px', fontSize: '13px', color: '#334155', border: '1px solid #e2e8f0' }}>
-                                                <RenderAvatar url={o.avatar_url} />
-                                                {o.imie_nazwisko}
-                                                {(profile.rola === 'kierownik' || profile.rola === 'pracownik') && (
-                                                  <button onClick={() => usunZObsady(prog.id, o.id_uzytkownika)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontWeight: 'bold', fontSize: '14px', padding: '0 0 0 4px' }}>×</button>
-                                                )}
-                                              </span>
-                                            ))}
+                                          {osobyWpisu.length === 0 ? <span style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '13px' }}>Brak osób w obsadzie</span> : osobyWpisu.map(o => (
+                                            <span key={o.id_uzytkownika} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '4px 10px', backgroundColor: '#fff', borderRadius: '20px', fontSize: '13px', color: '#334155', border: '1px solid #e2e8f0' }}>
+                                              <RenderAvatar url={o.avatar_url} />
+                                              {o.imie_nazwisko}
+                                              {/* Usuwanie z obsady - TYLKO DLA KIEROWNIKA */}
+                                              {isKierownik && (
+                                                <button onClick={() => usunZObsady(prog.id, o.id_uzytkownika)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontWeight: 'bold', fontSize: '14px', padding: '0 0 0 4px' }}>×</button>
+                                              )}
+                                            </span>
+                                          ))}
                                         </div>
 
-                                        {(profile.rola === 'kierownik' || profile.rola === 'pracownik') && wolniDoObsadzenia.length > 0 && (
+                                        {/* Przypisywanie do obsady - TYLKO DLA KIEROWNIKA */}
+                                        {isKierownik && wolniDoObsadzenia.length > 0 && (
                                           <div style={{ marginTop: '8px', borderTop: '1px dashed #cbd5e1', paddingTop: '8px' }}>
                                             <div style={{ display: 'flex', gap: '6px', marginTop: '4px', flexWrap: 'wrap' }}>
                                               <select id={`select-osoba-${prog.id}`} style={{ flex: '1 1 150px', padding: '4px', fontSize: '12px', borderRadius: '4px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', boxSizing: 'border-box' }}>
@@ -404,12 +411,10 @@ export default function Koncerty({ profile }) {
   );
 }
 
-function aktywnaTab(val) { return val || 'sklad'; }
-
 function renderujListeOsobek(tytulSekcji, listaOsob, koncertId, profile, naZmienKwalifikacje, isPodgrupa = false) {
   const zakwalifikowani = listaOsob.filter(o => o.zakwalifikowany === true);
   const rezerwa = listaOsob.filter(o => o.zakwalifikowany === false || o.zakwalifikowany === null);
-  const isKadra = profile.rola === 'kierownik' || profile.rola === 'pracownik';
+  const isKierownik = profile.rola === 'kierownik';
 
   return (
     <div>
@@ -430,7 +435,8 @@ function renderujListeOsobek(tytulSekcji, listaOsob, koncertId, profile, naZmien
                       <RenderAvatar url={osoba.avatar_url} />
                       <span>{osoba.imie_nazwisko} {osoba.id_uzytkownika === profile.id && '(Ty)'}</span>
                     </div>
-                    {isKadra && (
+                    {/* Zmiana kwalifikacji - TYLKO DLA KIEROWNIKA */}
+                    {isKierownik && (
                       <button onClick={() => naZmienKwalifikacje(koncertId, osoba.id_uzytkownika, false)} style={{ padding: '2px 6px', backgroundColor: '#fef3c7', color: '#92400e', border: 'none', borderRadius: '4px', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold' }}>Rezerwa ⏳</button>
                     )}
                   </li>
@@ -448,7 +454,8 @@ function renderujListeOsobek(tytulSekcji, listaOsob, koncertId, profile, naZmien
                       <RenderAvatar url={osoba.avatar_url} />
                       <span>{osoba.imie_nazwisko} {osoba.id_uzytkownika === profile.id && '(Ty)'}</span>
                     </div>
-                    {isKadra && (
+                    {/* Zmiana kwalifikacji - TYLKO DLA KIEROWNIKA */}
+                    {isKierownik && (
                       <button onClick={() => naZmienKwalifikacje(koncertId, osoba.id_uzytkownika, true)} style={{ padding: '3px 6px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '4px', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold' }}>Zakwalifikuj ✔️</button>
                     )}
                   </li>

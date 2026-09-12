@@ -9,6 +9,8 @@ export default function Aktualnosci({ profile }) {
   const [odczytyMap, setOdczytyMap] = useState({});
   const [rozwinieteStatystyki, setRozwinieteStatystyki] = useState({});
 
+  const isKierownik = profile?.rola === 'kierownik';
+
   useEffect(() => {
     if (profile) {
       pobierzAktualnosci();
@@ -56,7 +58,8 @@ export default function Aktualnosci({ profile }) {
   };
 
   const oznaczJakoOdczytane = async (aktualnoscId) => {
-    if (profile && profile.rola === 'członek') {
+    // Oznaczamy jako odczytane dla zwykłych członków (lub opcjonalnie także dla instruktora, jeśli ma tylko czytać)
+    if (profile && (profile.rola === 'członek' || profile.rola === 'pracownik')) {
       await supabase
         .from('aktualnosci_odczyty')
         .upsert([{ id_aktualnosci: aktualnoscId, id_uzytkownika: profile.id }], { onConflict: 'id_aktualnosci, id_uzytkownika' });
@@ -91,7 +94,6 @@ export default function Aktualnosci({ profile }) {
     if (!error) pobierzAktualnosci();
   };
 
-  const isKadra = profile?.rola === 'kierownik' || profile?.rola === 'pracownik';
   const inputStyle = { width: '100%', boxSizing: 'border-box', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', fontSize: '14px' };
   const labelStyle = { display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#64748b', marginBottom: '4px' };
 
@@ -99,7 +101,8 @@ export default function Aktualnosci({ profile }) {
     <div style={{ marginTop: '20px', padding: '25px', border: '1px solid #e2e8f0', borderRadius: '12px', backgroundColor: '#ffffff', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
       <h2 style={{ color: '#1e293b', marginBottom: '20px', fontSize: '20px' }}>Aktualności i Komunikaty 📢</h2>
 
-      {isKadra && (
+      {/* Formularz dodawania wpisu - TYLKO DLA KIEROWNIKA */}
+      {isKierownik && (
         <div style={{ marginBottom: '30px', padding: '20px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
           <h3 style={{ margin: '0 0 15px 0', fontSize: '16px', color: '#334155' }}>Dodaj nowy komunikat</h3>
           <form onSubmit={dodajWpis} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -127,7 +130,8 @@ export default function Aktualnosci({ profile }) {
             const odczytanePrzez = odczytyMap[wpis.id] || [];
             const czyRozwinieteStaty = rozwinieteStatystyki[wpis.id];
             
-            if (profile?.rola === 'członek') {
+            // Rejestracja odczytu dla członka oraz instruktora
+            if (profile?.rola === 'członek' || profile?.rola === 'pracownik') {
               oznaczJakoOdczytane(wpis.id);
             }
 
@@ -140,7 +144,8 @@ export default function Aktualnosci({ profile }) {
                       Opublikowano: {new Date(wpis.created_at).toLocaleDateString('pl-PL')} o {new Date(wpis.created_at).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}
                     </p>
                   </div>
-                  {isKadra && (
+                  {/* Przycisk usuwania - TYLKO DLA KIEROWNIKA */}
+                  {isKierownik && (
                     <button onClick={() => usunWpis(wpis.id)} style={{ padding: '5px 10px', backgroundColor: '#ef4444', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>Usuń 🗑️</button>
                   )}
                 </div>
@@ -153,7 +158,8 @@ export default function Aktualnosci({ profile }) {
                   <span style={{ fontSize: '13px', color: '#64748b' }}>
                     👁️ Przeczytało: <strong>{odczytanePrzez.length}</strong> osób
                   </span>
-                  {isKadra && (
+                  {/* Przycisk podglądu statystyk odczytów - TYLKO DLA KIEROWNIKA */}
+                  {isKierownik && (
                     <button 
                       onClick={() => setRozwinieteStatystyki(prev => ({ ...prev, [wpis.id]: !prev[wpis.id] }))}
                       style={{ padding: '4px 10px', backgroundColor: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '12px', cursor: 'pointer', fontWeight: '600' }}
@@ -163,7 +169,8 @@ export default function Aktualnosci({ profile }) {
                   )}
                 </div>
 
-                {isKadra && czyRozwinieteStaty && (
+                {/* Rozwijana lista osób, które odczytały - TYLKO DLA KIEROWNIKA */}
+                {isKierownik && czyRozwinieteStaty && (
                   <div style={{ marginTop: '10px', padding: '10px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
                     <p style={{ margin: '0 0 6px 0', fontSize: '12px', fontWeight: 'bold', color: '#475569' }}>Lista osób, które odczytały komunikat:</p>
                     {odczytanePrzez.length === 0 ? (
