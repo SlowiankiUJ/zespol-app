@@ -94,7 +94,7 @@ export default function Harmonogram({ profile }) {
       
      // WYSYŁANIE POWIADOMIENIA PUSH
       try {
-        const res = await fetch(`${window.location.origin}/api/powiadomienie`, {
+        await fetch("/api/powiadomienie", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -102,12 +102,10 @@ export default function Harmonogram({ profile }) {
             tresc: `Zaplanowano nową próbę dla sekcji: ${sekcja}. Sprawdź harmonogram!`
           })
         });
-        const data = await res.json();
-        console.log("Wynik wysyłania powiadomienia próby:", data);
       } catch (err) {
-        console.error("Błąd wysyłania powiadomienia próby:", err);
+        console.error("Błąd wysyłania powiadomienia", err);
       }
-      
+
       setDataProby(''); setOpisCwiczen('');
       pobierzProby(); 
       setTimeout(() => setKomunikat(''), 3000);

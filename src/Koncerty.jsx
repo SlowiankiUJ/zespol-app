@@ -118,7 +118,7 @@ export default function Koncerty({ profile }) {
       
      // WYSYŁANIE POWIADOMIENIA PUSH
       try {
-        const res = await fetch(`${window.location.origin}/api/powiadomienie`, {
+        await fetch("/api/powiadomienie", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -126,10 +126,8 @@ export default function Koncerty({ profile }) {
             tresc: `Zaplanowano nowy koncert: ${tytul}. Sprawdź szczegóły!`
           })
         });
-        const data = await res.json();
-        console.log("Wynik wysyłania powiadomienia koncertu:", data);
       } catch (err) {
-        console.error("Błąd wysyłania powiadomienia koncertu:", err);
+        console.error("Błąd wysyłania powiadomienia", err);
       }
 
       setTytuł(''); setDataKoncertu(''); setMiejsce(''); setProgramOpis('');
