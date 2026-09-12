@@ -17,13 +17,12 @@ export default function MojaFrekwencja({ profile }) {
     if (profile) {
       pobierzMojaFrekwencje();
 
-      // Nasłuchiwanie na żywo - gdy kadra sprawdzi obecność, statystyki odświeżą się same
       const subscription = supabase
         .channel('zmiany_moja_frekwencja')
         .on(
           'postgres_changes', 
           { event: '*', schema: 'public', table: 'deklaracje_obecnosci' }, 
-          (payload) => {
+          () => {
             pobierzMojaFrekwencje(); 
           }
         )
@@ -36,7 +35,6 @@ export default function MojaFrekwencja({ profile }) {
   }, [profile]);
 
   const pobierzMojaFrekwencje = async () => {
-    // 1. Sprawdzamy, do jakich sekcji należy użytkownik (główna + dodatkowe)
     let sekcjeDoPobrania = [profile.sekcja];
     const { data: dodatkowe } = await supabase
       .from('dodatkowe_sekcje')
@@ -50,34 +48,51 @@ export default function MojaFrekwencja({ profile }) {
       });
     }
 
-    // 2. Pobieramy wszystkie próby dla tych sekcji (od najnowszych do najstarszych)
+    // Pobieramy próby dla sekcji użytkownika oraz próby generalne (żeby widział je w liście, ale bez wpływu na statystyki)
+    if (!sekcjeDoPobrania.includes('generalna')) {
+      sekcjeDoPobrania.push('generalna');
+    }
+
     const { data: probyData } = await supabase
       .from('proby')
       .select('*')
       .in('sekcja', sekcjeDoPobrania)
       .order('data_czas', { ascending: false });
 
-    // 3. Pobieramy deklaracje i faktyczne obecności TYLKO dla tego użytkownika
     const { data: dekData } = await supabase
       .from('deklaracje_obecnosci')
       .select('id_proby, planuje, usprawiedliwienie, obecny')
       .eq('id_uzytkownika', profile.id);
 
     const mapa = {};
+    if (dekData) {
+      dekData.forEach(d => {
+        mapa[d.id_proby] = d;
+      });
+    }
+
+    // Tworzymy mapę prób po ID do szybkiego sprawdzenia sekcji
+    const probyMap = {};
+    (probyData || []).forEach(p => {
+      probyMap[p.id] = p;
+    });
+
     let ob = 0;
     let nieob = 0;
     let tot = 0;
 
     if (dekData) {
       dekData.forEach(d => {
-        mapa[d.id_proby] = d;
-        // LICZYMY FREKWENCJĘ TYLKO Z FAKTYCZNEJ OBECNOŚCI
-        if (d.obecny === true) {
-          ob++;
-          tot++;
-        } else if (d.obecny === false) {
-          nieob++;
-          tot++;
+        const proba = probyMap[d.id_proby];
+        // LICZYMY FREKWENCJĘ TYLKO Z PRÓB SEKCYJNYCH (Odrzucamy próbę generalną)
+        if (proba && proba.sekcja !== 'generalna') {
+          if (d.obecny === true) {
+            ob++;
+            tot++;
+          } else if (d.obecny === false) {
+            nieob++;
+            tot++;
+          }
         }
       });
     }
@@ -123,8 +138,6 @@ export default function MojaFrekwencja({ profile }) {
             const stylSekcji = pobierzStylSekcji(proba.sekcja);
             const mojeDane = mojeObecnosci[proba.id] || {};
             const { planuje, usprawiedliwienie, obecny } = mojeDane;
-
-            // Sprawdzamy, czy data próby już minęła, żeby określić komunikaty
             const czyMinela = new Date(proba.data_czas) < new Date();
 
             return (
@@ -134,10 +147,9 @@ export default function MojaFrekwencja({ profile }) {
                 borderRadius: '8px', borderTop: `1px solid ${stylSekcji.border}`, borderRight: `1px solid ${stylSekcji.border}`, borderBottom: `1px solid ${stylSekcji.border}`
               }}>
                 
-                {/* Informacje o samej próbie */}
                 <div style={{ flex: '1 1 300px' }}>
                   <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: 'bold', backgroundColor: stylSekcji.glowny, color: 'white', marginBottom: '6px', textTransform: 'uppercase' }}>
-                    {proba.sekcja}
+                    {proba.sekcja === 'generalna' ? '🎭 Próba generalna' : proba.sekcja}
                   </span>
                   <h4 style={{ margin: '0 0 4px 0', color: '#1e293b', fontSize: '15px' }}>
                     📅 {formatujWyswietlanie(proba.data_czas)}
@@ -147,10 +159,7 @@ export default function MojaFrekwencja({ profile }) {
                   </p>
                 </div>
 
-                {/* Statusy weryfikacji i deklaracji */}
                 <div style={{ flex: '1 1 200px', display: 'flex', flexDirection: 'column', gap: '8px', borderLeft: '1px dashed #cbd5e1', paddingLeft: '15px' }}>
-                  
-                  {/* FAKTYCZNA OBECNOŚĆ (Decydująca) */}
                   <div>
                     <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 'bold', display: 'block', marginBottom: '2px' }}>Weryfikacja kadry:</span>
                     {obecny === true ? (
@@ -164,7 +173,6 @@ export default function MojaFrekwencja({ profile }) {
                     )}
                   </div>
 
-                  {/* DEKLARACJA (Dla podglądu członka) */}
                   <div>
                     <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 'bold', display: 'block', marginBottom: '2px' }}>Twoja deklaracja:</span>
                     {planuje === true ? (
@@ -178,7 +186,6 @@ export default function MojaFrekwencja({ profile }) {
                       <span style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic' }}>⚪ Brak deklaracji</span>
                     )}
                   </div>
-
                 </div>
 
               </div>
