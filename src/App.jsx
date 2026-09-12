@@ -10,6 +10,7 @@ import Koncerty from './Koncerty';
 import ZarzadzanieCzlonkami from './ZarzadzanieCzlonkami';
 import OneSignal from 'react-onesignal';
 import Aktualnosci from './Aktualnosci';
+import Osiagniecia from './Osiagniecia';
 
 export default function App() {
   const [session, setSession] = useState(null);
@@ -165,6 +166,12 @@ export default function App() {
             >
               ⚙️ Mój profil
             </button>
+            <button 
+  onClick={() => setAktywnaZakladka('osiagniecia')}
+  style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'osiagniecia' ? '#8b5cf6' : '#f8fafc', color: aktywnaZakladka === 'osiagniecia' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}
+>
+  🏆 Osiągnięcia
+</button>
           </>
         )}
 
@@ -263,7 +270,9 @@ export default function App() {
         {aktywnaZakladka === 'admin' && profile?.rola === 'kierownik' && (
           <AdminPanel profile={profile} />
         )}
-
+{aktywnaZakladka === 'osiagniecia' && profile?.rola === 'członek' && (
+  <Osiagniecia profile={profile} />
+)}
       </main>
     </div>
   );
