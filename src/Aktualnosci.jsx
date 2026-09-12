@@ -6,8 +6,8 @@ export default function Aktualnosci({ profile }) {
   const [tytul, setTytul] = useState('');
   const [tresc, setTresc] = useState('');
   const [komunikat, setKomunikat] = useState('');
-  const [odczytyMap, setOdczytyMap] = useState({}); // Przechowuje listę odczytów dla każdego wpisu
-  const [rozwinieteStatystyki, setRozwinieteStatystyki] = useState({}); // Dla kierownika
+  const [odczytyMap, setOdczytyMap] = useState({});
+  const [rozwinieteStatystyki, setRozwinieteStatystyki] = useState({});
 
   useEffect(() => {
     if (profile) {
@@ -16,39 +16,47 @@ export default function Aktualnosci({ profile }) {
   }, [profile]);
 
   const pobierzAktualnosci = async () => {
-    const { data, error } = await supabase
-      .from('aktualnosci')
-      .select('*, profiles(imie_nazwisko)')
-      .order('created_at', { ascending: false });
+    try {
+      const { data, error } = await supabase
+        .from('aktualnosci')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-    if (!error && data) {
-      setWpisy(data);
-      pobierzOdczyty(data.map(w => w.id));
+      if (error) throw error;
+      if (data) {
+        setWpisy(data);
+        pobierzOdczyty(data.map(w => w.id));
+      }
+    } catch (err) {
+      console.error("Błąd pobierania aktualności:", err.message);
     }
   };
 
   const pobierzOdczyty = async (wpisIds) => {
-    if (wpisIds.length === 0) return;
-    const { data, error } = await supabase
-      .from('aktualnosci_odczyty')
-      .select('id_aktualnosci, id_uzytkownika, profiles(imie_nazwisko, avatar_url, sekcja)')
-      .in('id_aktualnosci', wpisIds);
+    if (!wpisIds || wpisIds.length === 0) return;
+    try {
+      const { data, error } = await supabase
+        .from('aktualnosci_odczyty')
+        .select('id_aktualnosci, id_uzytkownika, profiles(imie_nazwisko, avatar_url, sekcja)')
+        .in('id_aktualnosci', wpisIds);
 
-    if (!error && data) {
-      const mapa = {};
-      wpisIds.forEach(id => { mapa[id] = []; });
-      data.forEach(d => {
-        if (mapa[d.id_aktualnosci] && d.profiles) {
-          mapa[d.id_aktualnosci].push(d.profiles);
-        }
-      });
-      setOdczytyMap(mapa);
+      if (!error && data) {
+        const mapa = {};
+        wpisIds.forEach(id => { mapa[id] = []; });
+        data.forEach(d => {
+          if (mapa[d.id_aktualnosci] && d.profiles) {
+            mapa[d.id_aktualnosci].push(d.profiles);
+          }
+        });
+        setOdczytyMap(mapa);
+      }
+    } catch (err) {
+      console.error("Błąd pobierania odczytów:", err);
     }
   };
 
-  // Automatyczne oznaczanie jako odczytane, gdy członek wchodzi w zakładkę / widzi wpis
   const oznaczJakoOdczytane = async (aktualnoscId) => {
-    if (profile.rola === 'członek') {
+    if (profile && profile.rola === 'członek') {
       await supabase
         .from('aktualnosci_odczyty')
         .upsert([{ id_aktualnosci: aktualnoscId, id_uzytkownika: profile.id }], { onConflict: 'id_aktualnosci, id_uzytkownika' });
@@ -83,7 +91,7 @@ export default function Aktualnosci({ profile }) {
     if (!error) pobierzAktualnosci();
   };
 
-  const isKadra = profile.rola === 'kierownik' || profile.rola === 'pracownik';
+  const isKadra = profile?.rola === 'kierownik' || profile?.rola === 'pracownik';
   const inputStyle = { width: '100%', boxSizing: 'border-box', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', fontSize: '14px' };
   const labelStyle = { display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#64748b', marginBottom: '4px' };
 
@@ -91,7 +99,6 @@ export default function Aktualnosci({ profile }) {
     <div style={{ marginTop: '20px', padding: '25px', border: '1px solid #e2e8f0', borderRadius: '12px', backgroundColor: '#ffffff', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
       <h2 style={{ color: '#1e293b', marginBottom: '20px', fontSize: '20px' }}>Aktualności i Komunikaty 📢</h2>
 
-      {/* PANEL KIEROWNIKA DO DODAWANIA WPISÓW */}
       {isKadra && (
         <div style={{ marginBottom: '30px', padding: '20px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
           <h3 style={{ margin: '0 0 15px 0', fontSize: '16px', color: '#334155' }}>Dodaj nowy komunikat</h3>
@@ -112,17 +119,15 @@ export default function Aktualnosci({ profile }) {
         </div>
       )}
 
-      {/* LISTA AKTUALNOŚCI */}
       {wpisy.length === 0 ? (
         <p style={{ color: '#718096' }}>Brak aktualności.</p>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {wpisy.map(wpis => {
             const odczytanePrzez = odczytyMap[wpis.id] || [];
-            const czyRozwinieteStaty = rozwinitaStatystyki[wpis.id];
+            const czyRozwinieteStaty = rozwinieteStatystyki[wpis.id];
             
-            // Wywołanie rejestracji odczytu przy renderowaniu dla członka
-            if (profile.rola === 'członek') {
+            if (profile?.rola === 'członek') {
               oznaczJakoOdczytane(wpis.id);
             }
 
@@ -144,7 +149,6 @@ export default function Aktualnosci({ profile }) {
                   {wpis.tresc}
                 </p>
 
-                {/* LICZNIK ODCZYTÓW / STATYSTYKY DLA KADRY */}
                 <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
                   <span style={{ fontSize: '13px', color: '#64748b' }}>
                     👁️ Przeczytało: <strong>{odczytanePrzez.length}</strong> osób
