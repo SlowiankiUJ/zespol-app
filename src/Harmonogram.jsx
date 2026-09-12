@@ -102,7 +102,7 @@ export default function Harmonogram({ profile }) {
           },
           body: JSON.stringify({
             app_id: "2847ff42-0d1c-4968-9e50-a47e42fddac5",
-            included_segments: ["Subscribed Users"],
+            included_segments: ["Total Subscriptions"],
             headings: { "en": "Nowa próba! 📅" },
             contents: { "en": `Zaplanowano nową próbę dla sekcji: ${sekcja}. Sprawdź harmonogram!` }
           })

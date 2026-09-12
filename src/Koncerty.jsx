@@ -126,7 +126,7 @@ export default function Koncerty({ profile }) {
           },
           body: JSON.stringify({
             app_id: "2847ff42-0d1c-4968-9e50-a47e42fddac5",
-            included_segments: ["Subscribed Users"], 
+            included_segments: ["Total Subscriptions"], 
             headings: { "en": "Nowy koncert! 🎻" },
             contents: { "en": `Zaplanowano nowy koncert: ${tytul}. Sprawdź szczegóły!` }
           })
