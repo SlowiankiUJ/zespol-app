@@ -97,7 +97,6 @@ export default function Harmonogram({ profile }) {
     } else {
       setKomunikat('Próba dodana pomyślnie! ✅ Wysyłam powiadomienie...');
       
-      // WYSYŁANIE POWIADOMIENIA PUSH
       try {
         const resPowiadomienie = await fetch("/api/powiadomienie", {
           method: "POST",
@@ -232,7 +231,6 @@ export default function Harmonogram({ profile }) {
   const isKadra = profile.rola === 'kierownik' || profile.rola === 'pracownik';
   const isKierownik = profile.rola === 'kierownik';
 
-  // WSPÓLNE STYLE DLA PÓL FORMULARZA Z BOX-SIZING
   const inputStyle = { width: '100%', boxSizing: 'border-box', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', fontSize: '14px' };
   const labelStyle = { display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#64748b', marginBottom: '4px' };
 
@@ -263,7 +261,7 @@ export default function Harmonogram({ profile }) {
                   <option value="balet">Sekcja: Balet</option>
                   <option value="chór">Sekcja: Chór</option>
                   <option value="kapela">Sekcja: Kapela</option>
-                  {/* Próba generalna dostępna wyłącznie dla kierownika */}
+                  {/* Próba generalna widoczna wyłącznie dla kierownika */}
                   {isKierownik && <option value="generalna">🎭 Próba generalna (Cały zespół)</option>}
                 </select>
               </div>
