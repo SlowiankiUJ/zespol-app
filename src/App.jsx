@@ -9,6 +9,7 @@ import PodgladObecnosciCzlonka from './PodgladObecnosciCzlonka';
 import Koncerty from './Koncerty';
 import ZarzadzanieCzlonkami from './ZarzadzanieCzlonkami';
 import OneSignal from 'react-onesignal';
+import Aktualnosci from './Aktualnosci';
 
 export default function App() {
   const [session, setSession] = useState(null);
@@ -135,6 +136,12 @@ export default function App() {
               📅 Harmonogram prób
             </button>
             <button 
+              onClick={() => setAktywnaZakladka('aktualnosci')}
+              style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'aktualnosci' ? '#8b5cf6' : '#f8fafc', color: aktywnaZakladka === 'aktualnosci' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}
+            >
+              📢 Aktualności
+            </button>
+            <button 
               onClick={() => setAktywnaZakladka('sprawdz_obecnosc')}
               style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'sprawdz_obecnosc' ? '#8b5cf6' : '#f8fafc', color: aktywnaZakladka === 'sprawdz_obecnosc' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}
             >
@@ -171,6 +178,12 @@ export default function App() {
               📅 Harmonogram prób
             </button>
             <button 
+              onClick={() => setAktywnaZakladka('aktualnosci')}
+              style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'aktualnosci' ? '#3182ce' : '#f8fafc', color: aktywnaZakladka === 'aktualnosci' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}
+            >
+              📢 Aktualności
+            </button>
+            <button 
               onClick={() => setAktywnaZakladka('czlonkowie')}
               style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'czlonkowie' ? '#3182ce' : '#f8fafc', color: aktywnaZakladka === 'czlonkowie' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}
             >
@@ -197,6 +210,10 @@ export default function App() {
         
         {aktywnaZakladka === 'harmonogram' && (
           <Harmonogram profile={profile} />
+        )}
+
+        {aktywnaZakladka === 'aktualnosci' && (
+          <Aktualnosci profile={profile} />
         )}
 
         {aktywnaZakladka === 'czlonkowie' && (profile?.rola === 'kierownik' || profile?.rola === 'pracownik') && (
