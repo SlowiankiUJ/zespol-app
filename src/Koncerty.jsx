@@ -116,9 +116,9 @@ export default function Koncerty({ profile }) {
     } else {
       setKomunikat('Koncert dodany pomyślnie! ✅ Wysyłam powiadomienie...');
       
-     // WYSYŁANIE POWIADOMIENIA PUSH (przez własne API Vercel)
+     // WYSYŁANIE POWIADOMIENIA PUSH
       try {
-        await fetch("/api/powiadomienie", {
+        const res = await fetch(`${window.location.origin}/api/powiadomienie`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -126,8 +126,10 @@ export default function Koncerty({ profile }) {
             tresc: `Zaplanowano nowy koncert: ${tytul}. Sprawdź szczegóły!`
           })
         });
+        const data = await res.json();
+        console.log("Wynik wysyłania powiadomienia koncertu:", data);
       } catch (err) {
-        console.error("Błąd wysyłania powiadomienia", err);
+        console.error("Błąd wysyłania powiadomienia koncertu:", err);
       }
 
       setTytuł(''); setDataKoncertu(''); setMiejsce(''); setProgramOpis('');

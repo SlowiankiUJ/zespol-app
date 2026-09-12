@@ -92,9 +92,9 @@ export default function Harmonogram({ profile }) {
     } else {
       setKomunikat('Próba dodana pomyślnie! ✅ Wysyłam powiadomienie...');
       
-     // WYSYŁANIE POWIADOMIENIA PUSH (przez własne API Vercel)
+     // WYSYŁANIE POWIADOMIENIA PUSH
       try {
-        await fetch("/api/powiadomienie", {
+        const res = await fetch(`${window.location.origin}/api/powiadomienie`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -102,10 +102,12 @@ export default function Harmonogram({ profile }) {
             tresc: `Zaplanowano nową próbę dla sekcji: ${sekcja}. Sprawdź harmonogram!`
           })
         });
+        const data = await res.json();
+        console.log("Wynik wysyłania powiadomienia próby:", data);
       } catch (err) {
-        console.error("Błąd wysyłania powiadomienia", err);
+        console.error("Błąd wysyłania powiadomienia próby:", err);
       }
-
+      
       setDataProby(''); setOpisCwiczen('');
       pobierzProby(); 
       setTimeout(() => setKomunikat(''), 3000);
