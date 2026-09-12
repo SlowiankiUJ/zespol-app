@@ -17,6 +17,7 @@ export default function App() {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [aktywnaZakladka, setAktywnaZakladka] = useState('harmonogram');
+  const [streak, setStreak] = useState(0); // Stan na przechowywanie serii (streaka)
 
   // INICJALIZACJA ONESIGNAL (Powiadomienia Push)
   useEffect(() => {
@@ -27,7 +28,6 @@ export default function App() {
           allowLocalhostAsSecureOrigin: true, // Pozwala testować lokalnie
         });
         
-        // Wyświetla okienko (Slidedown) z prośbą o zgodę na powiadomienia
         OneSignal.Slidedown.promptPush();
       } catch (error) {
         console.error('Błąd inicjalizacji OneSignal:', error);
@@ -67,10 +67,46 @@ export default function App() {
 
       if (error) throw error;
       setProfile(data);
+      
+      // Po pobraniu profilu liczymy streak obecności
+      obliczStreak(userId);
     } catch (error) {
       console.error('Błąd pobierania profilu:', error.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Funkcja obliczająca serię (streak) prób pod rząd
+  const obliczStreak = async (userId) => {
+    try {
+      // Pobieramy wpisy obecności użytkownika powiązane z datą próby, posortowane od najnowszej do najstarszej
+      const { data, error } = await supabase
+        .from('deklaracje_obecnosci')
+        .select('obecny, harmonogram_prob(data_proba)')
+        .eq('id_uzytkownika', userId);
+
+      if (error || !data || data.length === 0) return;
+
+      // Sortujemy tablicę po dacie próby malejąco (od najnowszej)
+      const posortowane = data
+        .filter(item => item.harmonogram_prob && item.harmonogram_prob.data_proba)
+        .sort((a, b) => new Date(b.harmonogram_prob.data_proba) - new Date(a.harmonogram_prob.data_proba));
+
+      let aktualnyStreak = 0;
+      for (const wpis of posortowane) {
+        if (wpis.obecny === true) {
+          aktualnyStreak++;
+        } else if (wpis.obecny === false) {
+          // Jeśli natrafimy na nieobecność, przerywamy liczenie passy
+          break;
+        }
+        // Jeśli `obecny` jest null/brak deklaracji, pomijamy lub przerywamy (zależy czy brak odpowiedzi liczy się jako nieobecność; tutaj przerywamy na false, a null traktujemy neutralnie lub jako przerwę)
+      }
+
+      setStreak(aktualnyStreak);
+    } catch (err) {
+      console.error('Błąd obliczania streaka:', err);
     }
   };
 
@@ -111,8 +147,14 @@ export default function App() {
       <header style={{ backgroundColor: '#1e293b', color: 'white', padding: '15px 30px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
         <div>
           <h1 style={{ margin: 0, fontSize: '20px', letterSpacing: '0.5px' }}>ZPiT UJ „Słowianki” 🌾</h1>
-          <p style={{ margin: '3px 0 0 0', fontSize: '13px', color: '#94a3b8' }}>
-            Zalogowany jako: <strong style={{ color: '#e2e8f0' }}>{profile?.imie_nazwisko}</strong> ({profile?.rola}{profile?.sekcja ? ` - ${profile.sekcja}` : ''})
+          <p style={{ margin: '3px 0 0 0', fontSize: '13px', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <span>Zalogowany jako: <strong style={{ color: '#e2e8f0' }}>{profile?.imie_nazwisko}</strong> ({profile?.rola}{profile?.sekcja ? ` - ${profile.sekcja}` : ''})</span>
+            {/* Wyświetlanie streaka z emotką ognia */}
+            {profile?.rola === 'członek' && (
+              <span style={{ backgroundColor: '#334155', padding: '2px 8px', borderRadius: '12px', color: '#f59e0b', fontWeight: 'bold', display: 'inline-flex', alignItems: 'center', gap: '4px', border: '1px solid #475569' }}>
+                🔥 {streak} {streak === 1 ? 'próba z rzędu' : 'prób z rzędu'}
+              </span>
+            )}
           </p>
         </div>
 
@@ -167,15 +209,15 @@ export default function App() {
               ⚙️ Mój profil
             </button>
             <button 
-  onClick={() => setAktywnaZakladka('osiagniecia')}
-  style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'osiagniecia' ? '#8b5cf6' : '#f8fafc', color: aktywnaZakladka === 'osiagniecia' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}
->
-  🏆 Osiągnięcia
-</button>
+              onClick={() => setAktywnaZakladka('osiagniecia')}
+              style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'osiagniecia' ? '#8b5cf6' : '#f8fafc', color: aktywnaZakladka === 'osiagniecia' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}
+            >
+              🏆 Osiągnięcia
+            </button>
           </>
         )}
 
-        {/* Zakładki dla pracownika / instruktora (tylko harmonogram prób, aktualności i koncerty z dostępem do programu) */}
+        {/* Zakładki dla pracownika / instruktora */}
         {profile?.rola === 'pracownik' && (
           <>
             <button 
@@ -199,7 +241,7 @@ export default function App() {
           </>
         )}
 
-        {/* Zakładki dla kierownika (pełne uprawnienia) */}
+        {/* Zakładki dla kierownika */}
         {profile?.rola === 'kierownik' && (
           <>
             <button 
@@ -270,9 +312,11 @@ export default function App() {
         {aktywnaZakladka === 'admin' && profile?.rola === 'kierownik' && (
           <AdminPanel profile={profile} />
         )}
-{aktywnaZakladka === 'osiagniecia' && profile?.rola === 'członek' && (
-  <Osiagniecia profile={profile} />
-)}
+
+        {aktywnaZakladka === 'osiagniecia' && profile?.rola === 'członek' && (
+          <Osiagniecia profile={profile} />
+        )}
+
       </main>
     </div>
   );
