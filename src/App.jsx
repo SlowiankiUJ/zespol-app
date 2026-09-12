@@ -168,8 +168,32 @@ export default function App() {
           </>
         )}
 
-        {/* Zakładki dla kierownika / pracownika */}
-        {(profile?.rola === 'kierownik' || profile?.rola === 'pracownik') && (
+        {/* Zakładki dla pracownika / instruktora (tylko harmonogram prób, aktualności i koncerty z dostępem do programu) */}
+        {profile?.rola === 'pracownik' && (
+          <>
+            <button 
+              onClick={() => setAktywnaZakladka('harmonogram')}
+              style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'harmonogram' ? '#d97706' : '#f8fafc', color: aktywnaZakladka === 'harmonogram' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}
+            >
+              📅 Harmonogram prób
+            </button>
+            <button 
+              onClick={() => setAktywnaZakladka('aktualnosci')}
+              style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'aktualnosci' ? '#d97706' : '#f8fafc', color: aktywnaZakladka === 'aktualnosci' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}
+            >
+              📢 Aktualności
+            </button>
+            <button 
+              onClick={() => setAktywnaZakladka('koncerty')}
+              style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'koncerty' ? '#d97706' : '#f8fafc', color: aktywnaZakladka === 'koncerty' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}
+            >
+              🎻 Koncerty
+            </button>
+          </>
+        )}
+
+        {/* Zakładki dla kierownika (pełne uprawnienia) */}
+        {profile?.rola === 'kierownik' && (
           <>
             <button 
               onClick={() => setAktywnaZakladka('harmonogram')}
@@ -216,7 +240,7 @@ export default function App() {
           <Aktualnosci profile={profile} />
         )}
 
-        {aktywnaZakladka === 'czlonkowie' && (profile?.rola === 'kierownik' || profile?.rola === 'pracownik') && (
+        {aktywnaZakladka === 'czlonkowie' && profile?.rola === 'kierownik' && (
           <ZarzadzanieCzlonkami />
         )}
 
@@ -236,7 +260,7 @@ export default function App() {
           <PodgladCzlonka profile={profile} />
         )}
 
-        {aktywnaZakladka === 'admin' && (profile?.rola === 'kierownik' || profile?.rola === 'pracownik') && (
+        {aktywnaZakladka === 'admin' && profile?.rola === 'kierownik' && (
           <AdminPanel profile={profile} />
         )}
 

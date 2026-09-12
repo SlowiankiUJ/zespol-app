@@ -41,6 +41,8 @@ export default function Koncerty({ profile }) {
   const [editProgramOpis, setEditProgramOpis] = useState('');
 
   const isKierownik = profile?.rola === 'kierownik';
+  // Zarówno kierownik, jak i pracownik (instruktor) mogą zarządzać programem i obsadą układów
+  const canManageProgram = profile?.rola === 'kierownik' || profile?.rola === 'pracownik';
 
   useEffect(() => {
     if (profile) pobierzKoncerty();
@@ -198,7 +200,6 @@ export default function Koncerty({ profile }) {
   const przelaczRozwiniecieSkladu = (koncertId) => { setRozwinieteSkłady(prev => ({ ...prev, [koncertId]: !prev[koncertId] })); };
   const ustawPodzakladke = (koncertId, tab) => { setAktywnaPodzakladka(prev => ({ ...prev, [koncertId]: tab })); };
 
-  // WSPÓLNE STYLE
   const inputStyle = { width: '100%', boxSizing: 'border-box', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px', backgroundColor: '#fff', color: '#000' };
   const labelStyle = { display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#64748b', marginBottom: '4px' };
 
@@ -340,8 +341,8 @@ export default function Koncerty({ profile }) {
                           {podzakladka === 'program' && (
                             <div>
                               <h5 style={{ margin: '0 0 10px 0', fontSize: '15px', color: '#1e293b' }}>Program i występy w układach:</h5>
-                              {/* Dodawanie układu - TYLKO DLA KIEROWNIKA */}
-                              {isKierownik && (
+                              {/* Dodawanie układu - DLA KIEROWNIKA LUB PRACOWNIKA */}
+                              {canManageProgram && (
                                 <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', backgroundColor: '#f8fafc', padding: '10px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
                                   <input type="text" placeholder="Wpisz układ (np. Tańce rzeszowskie)" value={noweUklady[koncert.id] || ''} onChange={(e) => setNoweUklady({ ...noweUklady, [koncert.id]: e.target.value })} style={{ flex: 1, padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box' }} />
                                   <button onClick={() => dodajPunktProgramu(koncert.id)} style={{ padding: '8px 14px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}>Dodaj układ ➕</button>
@@ -359,8 +360,8 @@ export default function Koncerty({ profile }) {
                                       <div key={prog.id} style={{ padding: '12px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                                           <h6 style={{ margin: 0, fontSize: '14px', color: '#1e293b', fontWeight: 'bold' }}>{index + 1}. {prog.tytul_ukladu}</h6>
-                                          {/* Usuwanie układu - TYLKO DLA KIEROWNIKA */}
-                                          {isKierownik && (
+                                          {/* Usuwanie układu - DLA KIEROWNIKA LUB PRACOWNIKA */}
+                                          {canManageProgram && (
                                             <button onClick={() => usunPunktProgramu(prog.id)} style={{ padding: '2px 6px', backgroundColor: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: '4px', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold' }}>Usuń układ ❌</button>
                                           )}
                                         </div>
@@ -371,16 +372,16 @@ export default function Koncerty({ profile }) {
                                             <span key={o.id_uzytkownika} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '4px 10px', backgroundColor: '#fff', borderRadius: '20px', fontSize: '13px', color: '#334155', border: '1px solid #e2e8f0' }}>
                                               <RenderAvatar url={o.avatar_url} />
                                               {o.imie_nazwisko}
-                                              {/* Usuwanie z obsady - TYLKO DLA KIEROWNIKA */}
-                                              {isKierownik && (
+                                              {/* Usuwanie z obsady - DLA KIEROWNIKA LUB PRACOWNIKA */}
+                                              {canManageProgram && (
                                                 <button onClick={() => usunZObsady(prog.id, o.id_uzytkownika)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontWeight: 'bold', fontSize: '14px', padding: '0 0 0 4px' }}>×</button>
                                               )}
                                             </span>
                                           ))}
                                         </div>
 
-                                        {/* Przypisywanie do obsady - TYLKO DLA KIEROWNIKA */}
-                                        {isKierownik && wolniDoObsadzenia.length > 0 && (
+                                        {/* Przypisywanie do obsady - DLA KIEROWNIKA LUB PRACOWNIKA */}
+                                        {canManageProgram && wolniDoObsadzenia.length > 0 && (
                                           <div style={{ marginTop: '8px', borderTop: '1px dashed #cbd5e1', paddingTop: '8px' }}>
                                             <div style={{ display: 'flex', gap: '6px', marginTop: '4px', flexWrap: 'wrap' }}>
                                               <select id={`select-osoba-${prog.id}`} style={{ flex: '1 1 150px', padding: '4px', fontSize: '12px', borderRadius: '4px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', boxSizing: 'border-box' }}>
