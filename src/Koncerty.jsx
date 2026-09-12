@@ -111,10 +111,33 @@ export default function Koncerty({ profile }) {
     const pelnaDataCzas = `${dataKoncertu}T${godzinaKoncertu}:00`;
 
     const { error } = await supabase.from('koncerty').insert([{ tytul, data_czas: pelnaDataCzas, miejsce, program: programOpis }]);
-    if (error) { setKomunikat('Błąd: ' + error.message); } else {
-      setKomunikat('Koncert dodany pomyślnie! ✅');
+    if (error) { 
+      setKomunikat('Błąd: ' + error.message); 
+    } else {
+      setKomunikat('Koncert dodany pomyślnie! ✅ Wysyłam powiadomienie...');
+      
+      // WYSYŁANIE POWIADOMIENIA PUSH
+      try {
+        await fetch("https://onesignal.com/api/v1/notifications", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json; charset=utf-8",
+            "Authorization": "Key os_v2_app_fbd76qqndrewrhsqur7ef7o2yuvi5cfyhwdunweezdincckgj5sxlxbqnlkqmgnlemdqhwndx7odus2ugcj6szq5ngjsadkb5ym53oa"
+          },
+          body: JSON.stringify({
+            app_id: "2847ff42-0d1c-4968-9e50-a47e42fddac5",
+            included_segments: ["Subscribed Users"], 
+            headings: { "en": "Nowy koncert! 🎻" },
+            contents: { "en": `Zaplanowano nowy koncert: ${tytul}. Sprawdź szczegóły!` }
+          })
+        });
+      } catch (err) {
+        console.error("Błąd wysyłania powiadomienia", err);
+      }
+
       setTytuł(''); setDataKoncertu(''); setMiejsce(''); setProgramOpis('');
-      pobierzKoncerty(); setTimeout(() => setKomunikat(''), 3000);
+      pobierzKoncerty(); 
+      setTimeout(() => setKomunikat(''), 3000);
     }
   };
 
