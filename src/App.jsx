@@ -98,25 +98,62 @@ export default function App() {
     }
   };
 
+  // NAPRAWIONA FUNKCJA OBCZYNANIA STREAKA (Bezpieczne pobieranie i łączenie danych)
   const obliczStreak = async (userId) => {
     try {
-      const { data, error } = await supabase
+      // 1. Pobieramy deklaracje obecności użytkownika
+      const { data: deklaracje, error: dekError } = await supabase
         .from('deklaracje_obecnosci')
-        .select('obecny, harmonogram_prob(data_proba)')
+        .select('*')
         .eq('id_uzytkownika', userId);
 
-      if (error || !data || data.length === 0) {
+      if (dekError || !deklaracje || deklaracje.length === 0) {
         setStreak(0);
         return;
       }
 
-      // Sortujemy tablicę po dacie próby malejąco (od najnowszej)
-      const posortowane = data
-        .filter(item => item.harmonogram_prob && item.harmonogram_prob.data_proba)
-        .sort((a, b) => new Date(b.harmonogram_prob.data_proba) - new Date(a.harmonogram_prob.data_proba));
+      // 2. Pobieramy harmonogram prób
+      const { data: harmonogram, error: harmError } = await supabase
+        .from('harmonogram_prob')
+        .select('*');
 
+      if (harmError || !harmonogram) {
+        setStreak(0);
+        return;
+      }
+
+      // Tworzymy mapę dat prób według ich ID
+      const datyProbMap = {};
+      harmonogram.forEach(h => {
+        const probaId = h.id || h.id_proby;
+        const dataP = h.data_proba || h.data || h.termin;
+        if (probaId && dataP) {
+          datyProbMap[probaId] = dataP;
+        }
+      });
+
+      // 3. Łączymy deklaracje z datami prób
+      const wpisyZUstalonaData = deklaracje
+        .map(d => {
+          const probaId = d.id_proby || d.id_harmonogramu || d.harmonogram_id;
+          return {
+            obecny: d.obecny,
+            data_proba: datyProbMap[probaId]
+          };
+        })
+        .filter(item => item.data_proba && (item.obecny === true || item.obecny === false));
+
+      if (wpisyZUstalonaData.length === 0) {
+        setStreak(0);
+        return;
+      }
+
+      // 4. Sortujemy próbę od najnowszej do najstarszej
+      wpisyZUstalonaData.sort((a, b) => new Date(b.data_proba) - new Date(a.data_proba));
+
+      // 5. Liczymy passę (streak)
       let aktualnyStreak = 0;
-      for (const wpis of posortowane) {
+      for (const wpis of wpisyZUstalonaData) {
         if (wpis.obecny === true) {
           aktualnyStreak++;
         } else if (wpis.obecny === false) {
@@ -127,6 +164,7 @@ export default function App() {
       setStreak(aktualnyStreak);
     } catch (err) {
       console.error('Błąd obliczania streaka:', err);
+      setStreak(0);
     }
   };
 
