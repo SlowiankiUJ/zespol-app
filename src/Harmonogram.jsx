@@ -58,6 +58,11 @@ export default function Harmonogram({ profile }) {
       const { data: dodatkowe } = await supabase.from('dodatkowe_sekcje').select('sekcja').eq('id_uzytkownika', profile.id).eq('status', 'zatwierdzony');
       if (dodatkowe) dodatkowe.forEach(d => { if (!sekcjeDoPobrania.includes(d.sekcja)) sekcjeDoPobrania.push(d.sekcja); });
 
+      // Każdy członek zespołu musi widzieć próbę generalną (cały zespół)
+      if (!sekcjeDoPobrania.includes('generalna')) {
+        sekcjeDoPobrania.push('generalna');
+      }
+
       if (sekcjeDoPobrania.length === 0) { setProby([]); return; }
       const { data, error } = await supabase.from('proby').select('*').in('sekcja', sekcjeDoPobrania).order('data_czas', { ascending: true });
       if (!error && data) setProby(data);
@@ -98,8 +103,8 @@ export default function Harmonogram({ profile }) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            tytul: "Nowa próba! 📅",
-            tresc: `Zaplanowano nową próbę dla sekcji: ${sekcja}. Sprawdź harmonogram!`
+            tytul: sekcja === 'generalna' ? "Próba generalna! 🎭" : "Nowa próba! 📅",
+            tresc: sekcja === 'generalna' ? "Zaplanowano próbę generalną dla całego zespołu! Sprawdź harmonogram." : `Zaplanowano nową próbę dla sekcji: ${sekcja}. Sprawdź harmonogram!`
           })
         });
         const wynikJson = await resPowiadomienie.json();
@@ -225,6 +230,7 @@ export default function Harmonogram({ profile }) {
   };
 
   const isKadra = profile.rola === 'kierownik' || profile.rola === 'pracownik';
+  const isKierownik = profile.rola === 'kierownik';
 
   // WSPÓLNE STYLE DLA PÓL FORMULARZA Z BOX-SIZING
   const inputStyle = { width: '100%', boxSizing: 'border-box', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', fontSize: '14px' };
@@ -257,6 +263,8 @@ export default function Harmonogram({ profile }) {
                   <option value="balet">Sekcja: Balet</option>
                   <option value="chór">Sekcja: Chór</option>
                   <option value="kapela">Sekcja: Kapela</option>
+                  {/* Próba generalna dostępna wyłącznie dla kierownika */}
+                  {isKierownik && <option value="generalna">🎭 Próba generalna (Cały zespół)</option>}
                 </select>
               </div>
               <div>
@@ -299,6 +307,7 @@ export default function Harmonogram({ profile }) {
                 <label style={labelStyle}>Sekcja:</label>
                 <select value={sekcjaCykliczna} onChange={(e) => setSekcjaCykliczna(e.target.value)} style={inputStyle}>
                   <option value="balet">Sekcja: Balet</option><option value="chór">Sekcja: Chór</option><option value="kapela">Sekcja: Kapela</option>
+                  {isKierownik && <option value="generalna">🎭 Próba generalna (Cały zespół)</option>}
                 </select>
               </div>
               <div>
@@ -359,7 +368,7 @@ export default function Harmonogram({ profile }) {
                                 <input type="date" value={editDataProby} onChange={(e) => setEditDataProby(e.target.value)} onClick={(e) => e.target.showPicker && e.target.showPicker()} style={{ flex: '1 1 120px', ...inputStyle }} />
                                 <input type="time" value={editGodzinaProby} onChange={(e) => setEditGodzinaProby(e.target.value)} onClick={(e) => e.target.showPicker && e.target.showPicker()} style={{ flex: '1 1 100px', ...inputStyle }} />
                                 <select value={editSekcja} onChange={(e) => setEditSekcja(e.target.value)} style={{ flex: '1 1 100px', ...inputStyle }}>
-                                  <option value="balet">Balet</option><option value="chór">Chór</option><option value="kapela">Kapela</option>
+                                  <option value="balet">Balet</option><option value="chór">Chór</option><option value="kapela">Kapela</option><option value="generalna">Generalna</option>
                                 </select>
                               </div>
                               <textarea value={editOpisCwiczen} onChange={(e) => setEditOpisCwiczen(e.target.value)} style={{ ...inputStyle, resize: 'vertical' }} />
@@ -373,7 +382,7 @@ export default function Harmonogram({ profile }) {
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
                                 <div>
                                   <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold', backgroundColor: stylSekcji.glowny, color: 'white', marginBottom: '6px', textTransform: 'uppercase' }}>
-                                    {proba.sekcja}
+                                    {proba.sekcja === 'generalna' ? '🎭 Próba generalna' : proba.sekcja}
                                   </span>
                                   <h4 style={{ margin: '0 0 5px 0', color: '#1e293b', fontSize: '16px' }}>
                                     📅 {formatujWyswietlanie(proba.data_czas)}

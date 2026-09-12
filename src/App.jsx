@@ -98,7 +98,7 @@ export default function App() {
     }
   };
 
-  // PRAWIDŁOWO DOPASOWANA FUNKCJA OBLICZANIA STREAKA DO TABELI "proby"
+  // FUNKCJA OBLICZANIA STREAKA (Z pominięciem prób generalnych)
   const obliczStreak = async (userId) => {
     try {
       // 1. Pobieramy deklaracje obecności użytkownika
@@ -112,7 +112,7 @@ export default function App() {
         return;
       }
 
-      // 2. Pobieramy listę prób z poprawnej tabeli "proby"
+      // 2. Pobieramy listę prób z tabeli "proby"
       const { data: probyList, error: probError } = await supabase
         .from('proby')
         .select('*');
@@ -122,21 +122,28 @@ export default function App() {
         return;
       }
 
-      // Tworzymy mapę dat prób według ich ID
-      const datyProbMap = {};
+      // Tworzymy mapę prób po ID (przechowując datę oraz sekcję)
+      const probaInfoMap = {};
       probyList.forEach(p => {
         if (p.id && p.data_czas) {
-          datyProbMap[p.id] = p.data_czas;
+          probaInfoMap[p.id] = {
+            data_czas: p.data_czas,
+            sekcja: p.sekcja
+          };
         }
       });
 
-      // 3. Łączymy deklaracje z datami prób (używając poprawnego klucza id_proby)
+      // 3. Łączymy deklaracje z próbami i odrzucamy próby generalne
       const wpisyZUstalonaData = deklaracje
-        .map(d => ({
-          obecny: d.obecny,
-          data_proba: datyProbMap[d.id_proby]
-        }))
-        .filter(item => item.data_proba && (item.obecny === true || item.obecny === false));
+        .map(d => {
+          const info = probaInfoMap[d.id_proby];
+          return {
+            obecny: d.obecny,
+            data_proba: info ? info.data_czas : null,
+            sekcja: info ? info.sekcja : null
+          };
+        })
+        .filter(item => item.data_proba && item.sekcja !== 'generalna' && (item.obecny === true || item.obecny === false));
 
       if (wpisyZUstalonaData.length === 0) {
         setStreak(0);
