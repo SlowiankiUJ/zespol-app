@@ -10,7 +10,6 @@ const formatujDate = (dataString) => {
   return `${dzien}.${mc}.${rok}, ${godzina}`;
 };
 
-// Funkcja pomocnicza do renderowania miniaturki
 const RenderAvatar = ({ url }) => (
   <div style={{ width: '24px', height: '24px', borderRadius: '50%', backgroundColor: '#e2e8f0', overflow: 'hidden', display: 'flex', justifyContent: 'center', alignItems: 'center', flexShrink: 0 }}>
     {url ? <img src={url} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: '12px' }}>👤</span>}
@@ -68,7 +67,6 @@ export default function Koncerty({ profile }) {
     if (koncertIds.length === 0) return;
 
     const { data: dekData } = await supabase.from('deklaracje_koncerty').select('id, id_koncertu, id_uzytkownika, planuje, zakwalifikowany').in('id_koncertu', koncertIds);
-    // POBIERAMY avatar_url
     const { data: profData } = await supabase.from('profiles').select('id, imie_nazwisko, sekcja, glos, avatar_url').eq('status', 'zatwierdzony');
 
     if (dekData && profData) {
@@ -181,6 +179,10 @@ export default function Koncerty({ profile }) {
   const przelaczRozwiniecieSkladu = (koncertId) => { setRozwinieteSkłady(prev => ({ ...prev, [koncertId]: !prev[koncertId] })); };
   const ustawPodzakladke = (koncertId, tab) => { setAktywnaPodzakladka(prev => ({ ...prev, [koncertId]: tab })); };
 
+  // WSPÓLNE STYLE
+  const inputStyle = { width: '100%', boxSizing: 'border-box', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px', backgroundColor: '#fff', color: '#000' };
+  const labelStyle = { display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#64748b', marginBottom: '4px' };
+
   return (
     <div style={{ marginTop: '20px', padding: '25px', border: '1px solid #e2e8f0', borderRadius: '12px', backgroundColor: '#ffffff', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
       <h2 style={{ color: '#1e293b', marginBottom: '15px', fontSize: '20px' }}>Koncerty i Wydarzenia 🎻</h2>
@@ -189,20 +191,34 @@ export default function Koncerty({ profile }) {
         <div style={{ marginBottom: '30px', padding: '20px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
           <h3 style={{ margin: '0 0 15px 0', fontSize: '16px', color: '#334155' }}>Zaplanuj nowy koncert</h3>
           <form onSubmit={dodajKoncert} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <input type="text" placeholder="Tytuł (np. Koncert Jubileuszowy)" value={tytul} onChange={(e) => setTytuł(e.target.value)} required style={{ padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px' }} />
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <div style={{ flex: 2 }}>
-                <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#64748b', marginBottom: '3px' }}>Data (kliknij po kalendarz):</label>
-                <input type="date" value={dataKoncertu} onChange={(e) => setDataKoncertu(e.target.value)} onClick={(e) => e.target.showPicker && e.target.showPicker()} required style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', cursor: 'pointer', fontSize: '14px' }} />
+            <div>
+              <label style={labelStyle}>Tytuł:</label>
+              <input type="text" placeholder="Tytuł (np. Koncert Jubileuszowy)" value={tytul} onChange={(e) => setTytuł(e.target.value)} required style={inputStyle} />
+            </div>
+            
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              <div style={{ flex: '1 1 150px' }}>
+                <label style={labelStyle}>Data (kliknij po kalendarz):</label>
+                <input type="date" value={dataKoncertu} onChange={(e) => setDataKoncertu(e.target.value)} onClick={(e) => e.target.showPicker && e.target.showPicker()} required style={{...inputStyle, cursor: 'pointer'}} />
               </div>
-              <div style={{ flex: 1 }}>
-                <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#64748b', marginBottom: '3px' }}>Godzina:</label>
-                <input type="time" value={godzinaKoncertu} onChange={(e) => setGodzinaKoncertu(e.target.value)} onClick={(e) => e.target.showPicker && e.target.showPicker()} required style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', cursor: 'pointer', fontSize: '14px' }} />
+              <div style={{ flex: '1 1 100px' }}>
+                <label style={labelStyle}>Godzina:</label>
+                <input type="time" value={godzinaKoncertu} onChange={(e) => setGodzinaKoncertu(e.target.value)} onClick={(e) => e.target.showPicker && e.target.showPicker()} required style={{...inputStyle, cursor: 'pointer'}} />
               </div>
             </div>
-            <input type="text" placeholder="Miejsce" value={miejsce} onChange={(e) => setMiejsce(e.target.value)} required style={{ padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px' }} />
-            <textarea placeholder="Ogólny opis" value={programOpis} onChange={(e) => setProgramOpis(e.target.value)} rows="2" style={{ padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px' }} />
-            <button type="submit" style={{ padding: '12px', backgroundColor: '#3182ce', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}>Dodaj koncert 🎫</button>
+
+            <div>
+              <label style={labelStyle}>Miejsce:</label>
+              <input type="text" placeholder="Miejsce wydarzenia" value={miejsce} onChange={(e) => setMiejsce(e.target.value)} required style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Opis:</label>
+              <textarea placeholder="Ogólny opis" value={programOpis} onChange={(e) => setProgramOpis(e.target.value)} rows="2" style={{...inputStyle, resize: 'vertical'}} />
+            </div>
+            
+            <button type="submit" style={{ padding: '12px', backgroundColor: '#3182ce', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}>
+              Dodaj koncert 🎫
+            </button>
           </form>
           {komunikat && <p style={{ color: komunikat.includes('Błąd') ? '#dc3545' : 'green', marginTop: '10px', fontWeight: '500' }}>{komunikat}</p>}
         </div>
@@ -233,16 +249,16 @@ export default function Koncerty({ profile }) {
                 {czyEdytowany ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', backgroundColor: '#fff', padding: '15px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
                     <h4 style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#1e293b' }}>Edycja koncertu:</h4>
-                    <input type="text" value={editTytul} onChange={(e) => setEditTytul(e.target.value)} placeholder="Tytuł" style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '13px' }} />
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <input type="date" value={editDataKoncertu} onChange={(e) => setEditDataKoncertu(e.target.value)} onClick={(e) => e.target.showPicker && e.target.showPicker()} style={{ flex: 1, padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '13px' }} />
-                      <input type="time" value={editGodzinaKoncertu} onChange={(e) => setEditGodzinaKoncertu(e.target.value)} onClick={(e) => e.target.showPicker && e.target.showPicker()} style={{ flex: 1, padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '13px' }} />
+                    <input type="text" value={editTytul} onChange={(e) => setEditTytul(e.target.value)} placeholder="Tytuł" style={inputStyle} />
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      <input type="date" value={editDataKoncertu} onChange={(e) => setEditDataKoncertu(e.target.value)} onClick={(e) => e.target.showPicker && e.target.showPicker()} style={{ flex: '1 1 120px', ...inputStyle }} />
+                      <input type="time" value={editGodzinaKoncertu} onChange={(e) => setEditGodzinaKoncertu(e.target.value)} onClick={(e) => e.target.showPicker && e.target.showPicker()} style={{ flex: '1 1 100px', ...inputStyle }} />
                     </div>
-                    <input type="text" value={editMiejsce} onChange={(e) => setEditMiejsce(e.target.value)} placeholder="Miejsce" style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '13px' }} />
-                    <textarea value={editProgramOpis} onChange={(e) => setEditProgramOpis(e.target.value)} placeholder="Opis" style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '13px' }} />
+                    <input type="text" value={editMiejsce} onChange={(e) => setEditMiejsce(e.target.value)} placeholder="Miejsce" style={inputStyle} />
+                    <textarea value={editProgramOpis} onChange={(e) => setEditProgramOpis(e.target.value)} placeholder="Opis" style={{ ...inputStyle, resize: 'vertical' }} />
                     <div style={{ display: 'flex', gap: '8px', marginTop: '5px' }}>
-                      <button onClick={() => zapiszEdycje(koncert.id)} style={{ padding: '6px 14px', backgroundColor: '#10b981', color: '#fff', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Zapisz 💾</button>
-                      <button onClick={anulujEdycje} style={{ padding: '6px 14px', backgroundColor: '#94a3b8', color: '#fff', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Anuluj</button>
+                      <button onClick={() => zapiszEdycje(koncert.id)} style={{ padding: '8px 14px', backgroundColor: '#10b981', color: '#fff', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Zapisz 💾</button>
+                      <button onClick={anulujEdycje} style={{ padding: '8px 14px', backgroundColor: '#94a3b8', color: '#fff', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Anuluj</button>
                     </div>
                   </div>
                 ) : (
@@ -255,7 +271,7 @@ export default function Koncerty({ profile }) {
                         </p>
                       </div>
                       {(profile.rola === 'kierownik' || profile.rola === 'pracownik') && (
-                        <div style={{ display: 'flex', gap: '6px' }}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                           <button onClick={() => rozpocznijEdycje(koncert)} style={{ padding: '5px 10px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>Edytuj ✏️</button>
                           <button onClick={() => usunKoncert(koncert.id)} style={{ padding: '5px 10px', backgroundColor: '#ef4444', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>Usuń 🗑️</button>
                         </div>
@@ -305,7 +321,7 @@ export default function Koncerty({ profile }) {
                               <h5 style={{ margin: '0 0 10px 0', fontSize: '15px', color: '#1e293b' }}>Program i występy w układach:</h5>
                               {(profile.rola === 'kierownik' || profile.rola === 'pracownik') && (
                                 <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', backgroundColor: '#f8fafc', padding: '10px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                                  <input type="text" placeholder="Wpisz układ (np. Tańce rzeszowskie)" value={noweUklady[koncert.id] || ''} onChange={(e) => setNoweUklady({ ...noweUklady, [koncert.id]: e.target.value })} style={{ flex: 1, padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '13px' }} />
+                                  <input type="text" placeholder="Wpisz układ (np. Tańce rzeszowskie)" value={noweUklady[koncert.id] || ''} onChange={(e) => setNoweUklady({ ...noweUklady, [koncert.id]: e.target.value })} style={{ flex: 1, padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box' }} />
                                   <button onClick={() => dodajPunktProgramu(koncert.id)} style={{ padding: '8px 14px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}>Dodaj układ ➕</button>
                                 </div>
                               )}
@@ -341,8 +357,8 @@ export default function Koncerty({ profile }) {
 
                                         {(profile.rola === 'kierownik' || profile.rola === 'pracownik') && wolniDoObsadzenia.length > 0 && (
                                           <div style={{ marginTop: '8px', borderTop: '1px dashed #cbd5e1', paddingTop: '8px' }}>
-                                            <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
-                                              <select id={`select-osoba-${prog.id}`} style={{ padding: '4px', fontSize: '12px', borderRadius: '4px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000' }}>
+                                            <div style={{ display: 'flex', gap: '6px', marginTop: '4px', flexWrap: 'wrap' }}>
+                                              <select id={`select-osoba-${prog.id}`} style={{ flex: '1 1 150px', padding: '4px', fontSize: '12px', borderRadius: '4px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', boxSizing: 'border-box' }}>
                                                 {wolniDoObsadzenia.map(osoba => (<option key={osoba.id_uzytkownika} value={osoba.id_uzytkownika}>{osoba.imie_nazwisko} ({osoba.sekcja}{osoba.glos ? ` - ${osoba.glos}` : ''})</option>))}
                                               </select>
                                               <button onClick={() => { const sel = document.getElementById(`select-osoba-${prog.id}`); if (sel && sel.value) przypiszDoObsady(prog.id, sel.value); }} style={{ padding: '3px 8px', backgroundColor: '#3182ce', color: 'white', border: 'none', borderRadius: '4px', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}>Dodaj do układu ➕</button>

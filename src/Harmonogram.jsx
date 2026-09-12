@@ -23,7 +23,6 @@ export default function Harmonogram({ profile }) {
   const [aktywneInputyUsprawiedliwienia, setAktywneInputyUsprawiedliwienia] = useState({});
   const [rozwinitaObecnosc, setRozwinitaObecnosc] = useState({});
   
-  // Stan rozwijanych zakładek z miesiącami
   const [rozwinieteMiesiace, setRozwinieteMiesiace] = useState({});
 
   const [dataProby, setDataProby] = useState('');
@@ -181,9 +180,6 @@ export default function Harmonogram({ profile }) {
     setRozwinitaObecnosc(prev => ({ ...prev, [probaId]: !prev[probaId] }));
   };
 
-  // -----------------------------------------------------------
-  // GRUPOWANIE PRÓB NA MIESIĄCE
-  // -----------------------------------------------------------
   const aktualnaData = new Date();
   const aktualnyKluczMiesiaca = `${aktualnaData.getFullYear()}-${String(aktualnaData.getMonth()).padStart(2, '0')}`;
 
@@ -191,7 +187,7 @@ export default function Harmonogram({ profile }) {
     const data = new Date(proba.data_czas);
     const rok = data.getFullYear();
     const miesiacIdx = data.getMonth();
-    const klucz = `${rok}-${String(miesiacIdx).padStart(2, '0')}`; // np. "2026-08"
+    const klucz = `${rok}-${String(miesiacIdx).padStart(2, '0')}`;
     const nazwaMiesiaca = `${nazwyMiesiecy[miesiacIdx]} ${rok}`;
 
     if (!akregator[klucz]) {
@@ -210,67 +206,91 @@ export default function Harmonogram({ profile }) {
 
   const isKadra = profile.rola === 'kierownik' || profile.rola === 'pracownik';
 
+  // WSPÓLNE STYLE DLA PÓL FORMULARZA Z BOX-SIZING
+  const inputStyle = { width: '100%', boxSizing: 'border-box', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', fontSize: '14px' };
+  const labelStyle = { display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#64748b', marginBottom: '4px' };
+
   return (
     <div style={{ marginTop: '20px', padding: '25px', border: '1px solid #e2e8f0', borderRadius: '12px', backgroundColor: '#ffffff', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
       <h2 style={{ color: '#1e293b', marginBottom: '15px', fontSize: '20px' }}>Harmonogram Prób i Zgłoszenia</h2>
 
       {isKadra && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px', marginBottom: '30px' }}>
-          <div style={{ padding: '20px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', alignItems: 'stretch', gap: '20px', marginBottom: '30px' }}>
+          
+          {/* PANEL: POJEDYNCZA PRÓBA */}
+          <div style={{ padding: '20px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column' }}>
             <h3 style={{ margin: '0 0 15px 0', fontSize: '16px', color: '#334155' }}>Zaplanuj nową próbę</h3>
-            <form onSubmit={dodajProbe} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <div style={{ flex: 2 }}>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#64748b', marginBottom: '3px' }}>Data:</label>
-                  <input type="date" value={dataProby} onChange={(e) => setDataProby(e.target.value)} onClick={(e) => e.target.showPicker && e.target.showPicker()} required style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', cursor: 'pointer', fontSize: '14px' }} />
+            <form onSubmit={dodajProbe} style={{ display: 'flex', flexDirection: 'column', gap: '12px', flexGrow: 1 }}>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                <div style={{ flex: '1 1 150px' }}>
+                  <label style={labelStyle}>Data:</label>
+                  <input type="date" value={dataProby} onChange={(e) => setDataProby(e.target.value)} onClick={(e) => e.target.showPicker && e.target.showPicker()} required style={{...inputStyle, cursor: 'pointer'}} />
                 </div>
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#64748b', marginBottom: '3px' }}>Godzina:</label>
-                  <input type="time" value={godzinaProby} onChange={(e) => setGodzinaProby(e.target.value)} onClick={(e) => e.target.showPicker && e.target.showPicker()} required style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', cursor: 'pointer', fontSize: '14px' }} />
+                <div style={{ flex: '1 1 100px' }}>
+                  <label style={labelStyle}>Godzina:</label>
+                  <input type="time" value={godzinaProby} onChange={(e) => setGodzinaProby(e.target.value)} onClick={(e) => e.target.showPicker && e.target.showPicker()} required style={{...inputStyle, cursor: 'pointer'}} />
                 </div>
               </div>
-              <select value={sekcja} onChange={(e) => setSekcja(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', fontSize: '14px' }}>
-                <option value="balet">Sekcja: Balet</option>
-                <option value="chór">Sekcja: Chór</option>
-                <option value="kapela">Sekcja: Kapela</option>
-              </select>
-              <textarea placeholder="Opis ćwiczeń" value={opisCwiczen} onChange={(e) => setOpisCwiczen(e.target.value)} rows="3" required style={{ padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', fontSize: '14px' }} />
-              <button type="submit" style={{ padding: '12px', backgroundColor: '#3182ce', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}>Dodaj próbę do harmonogramu 📅</button>
+              <div>
+                <label style={labelStyle}>Sekcja:</label>
+                <select value={sekcja} onChange={(e) => setSekcja(e.target.value)} style={inputStyle}>
+                  <option value="balet">Sekcja: Balet</option>
+                  <option value="chór">Sekcja: Chór</option>
+                  <option value="kapela">Sekcja: Kapela</option>
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Program:</label>
+                <textarea placeholder="Opis ćwiczeń" value={opisCwiczen} onChange={(e) => setOpisCwiczen(e.target.value)} rows="3" required style={{...inputStyle, resize: 'vertical'}} />
+              </div>
+              <button type="submit" style={{ marginTop: 'auto', width: '100%', padding: '12px', backgroundColor: '#3182ce', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}>
+                Dodaj próbę 📅
+              </button>
             </form>
           </div>
 
-          <div style={{ padding: '20px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+          {/* PANEL: PRÓBY CYKLICZNE */}
+          <div style={{ padding: '20px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column' }}>
             <h3 style={{ margin: '0 0 15px 0', fontSize: '16px', color: '#334155' }}>Generuj próby cykliczne 🔄</h3>
-            <form onSubmit={dodajProbyCykliczne} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#64748b', marginBottom: '3px' }}>Od daty:</label>
-                  <input type="date" value={dataOd} onChange={(e) => setDataOd(e.target.value)} onClick={(e) => e.target.showPicker && e.target.showPicker()} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', fontSize: '13px', cursor: 'pointer' }} />
+            <form onSubmit={dodajProbyCykliczne} style={{ display: 'flex', flexDirection: 'column', gap: '12px', flexGrow: 1 }}>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                <div style={{ flex: '1 1 120px' }}>
+                  <label style={labelStyle}>Od daty:</label>
+                  <input type="date" value={dataOd} onChange={(e) => setDataOd(e.target.value)} onClick={(e) => e.target.showPicker && e.target.showPicker()} required style={{...inputStyle, cursor: 'pointer'}} />
                 </div>
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#64748b', marginBottom: '3px' }}>Do daty:</label>
-                  <input type="date" value={dataDo} onChange={(e) => setDataDo(e.target.value)} onClick={(e) => e.target.showPicker && e.target.showPicker()} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', fontSize: '13px', cursor: 'pointer' }} />
+                <div style={{ flex: '1 1 120px' }}>
+                  <label style={labelStyle}>Do daty:</label>
+                  <input type="date" value={dataDo} onChange={(e) => setDataDo(e.target.value)} onClick={(e) => e.target.showPicker && e.target.showPicker()} required style={{...inputStyle, cursor: 'pointer'}} />
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <div style={{ flex: 2 }}>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#64748b', marginBottom: '3px' }}>Dzień tygodnia:</label>
-                  <select value={wybranyDzieńTygodnia} onChange={(e) => setWybranyDzieńTygodnia(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', fontSize: '13px' }}>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                <div style={{ flex: '1 1 120px' }}>
+                  <label style={labelStyle}>Dzień tygodnia:</label>
+                  <select value={wybranyDzieńTygodnia} onChange={(e) => setWybranyDzieńTygodnia(e.target.value)} style={inputStyle}>
                     <option value="1">Poniedziałek</option><option value="2">Wtorek</option><option value="3">Środa</option><option value="4">Czwartek</option><option value="5">Piątek</option><option value="6">Sobota</option><option value="0">Niedziela</option>
                   </select>
                 </div>
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#64748b', marginBottom: '3px' }}>Godzina:</label>
-                  <input type="time" value={godzinaProbyCyklicznej} onChange={(e) => setGodzinaProbyCyklicznej(e.target.value)} onClick={(e) => e.target.showPicker && e.target.showPicker()} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', fontSize: '13px', cursor: 'pointer' }} />
+                <div style={{ flex: '1 1 100px' }}>
+                  <label style={labelStyle}>Godzina:</label>
+                  <input type="time" value={godzinaProbyCyklicznej} onChange={(e) => setGodzinaProbyCyklicznej(e.target.value)} onClick={(e) => e.target.showPicker && e.target.showPicker()} required style={{...inputStyle, cursor: 'pointer'}} />
                 </div>
               </div>
-              <select value={sekcjaCykliczna} onChange={(e) => setSekcjaCykliczna(e.target.value)} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', fontSize: '13px' }}>
-                <option value="balet">Sekcja: Balet</option><option value="chór">Sekcja: Chór</option><option value="kapela">Sekcja: Kapela</option>
-              </select>
-              <input type="text" placeholder="Opis / Program cyklu prób" value={opisCykliczny} onChange={(e) => setOpisCykliczny(e.target.value)} required style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', fontSize: '13px' }} />
-              <button type="submit" style={{ padding: '10px', backgroundColor: '#8b5cf6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '13px' }}>Generuj cykl prób ⚡</button>
+              <div>
+                <label style={labelStyle}>Sekcja:</label>
+                <select value={sekcjaCykliczna} onChange={(e) => setSekcjaCykliczna(e.target.value)} style={inputStyle}>
+                  <option value="balet">Sekcja: Balet</option><option value="chór">Sekcja: Chór</option><option value="kapela">Sekcja: Kapela</option>
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Program cyklu:</label>
+                <input type="text" placeholder="Opis / Program cyklu prób" value={opisCykliczny} onChange={(e) => setOpisCykliczny(e.target.value)} required style={inputStyle} />
+              </div>
+              <button type="submit" style={{ marginTop: 'auto', width: '100%', padding: '12px', backgroundColor: '#8b5cf6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}>
+                Generuj cykl ⚡
+              </button>
             </form>
           </div>
+
         </div>
       )}
 
@@ -284,26 +304,20 @@ export default function Harmonogram({ profile }) {
         <p style={{ color: '#718096' }}>Brak zaplanowanych prób.</p>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-          {/* Mapujemy po posortowanych kluczach miesięcy (od najstarszego do najnowszego) */}
           {Object.keys(pogrupowaneProby).sort().map(kluczMiesiaca => {
             const grupa = pogrupowaneProby[kluczMiesiaca];
-            
-            // Domyślnie rozwinięty jest tylko aktualny miesiąc (jeśli uż. nie kliknął inaczej)
             const isRozwiniety = rozwinieteMiesiace[kluczMiesiaca] ?? (kluczMiesiaca === aktualnyKluczMiesiaca);
 
             return (
               <div key={kluczMiesiaca} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#f8fafc' }}>
-                
-                {/* Nagłówek Miesiąca (Klikalny) */}
                 <button 
                   onClick={() => przelaczZakladkeMiesiaca(kluczMiesiaca)}
-                  style={{ width: '100%', padding: '15px 20px', backgroundColor: '#f1f5f9', border: 'none', borderBottom: isRozwiniety ? '1px solid #e2e8f0' : 'none', textAlign: 'left', fontWeight: 'bold', fontSize: '16px', color: '#1e293b', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '15px 20px', backgroundColor: '#f1f5f9', border: 'none', borderBottom: isRozwiniety ? '1px solid #e2e8f0' : 'none', textAlign: 'left', fontWeight: 'bold', fontSize: '16px', color: '#1e293b', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
                 >
                   <span>📅 {grupa.nazwa} <span style={{ color: '#64748b', fontSize: '14px', fontWeight: 'normal' }}>({grupa.proby.length} prób)</span></span>
                   <span style={{ fontSize: '12px', color: '#64748b' }}>{isRozwiniety ? '▲ Zwiń' : '▼ Rozwiń'}</span>
                 </button>
 
-                {/* Lista prób w danym miesiącu */}
                 {isRozwiniety && (
                   <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '20px', backgroundColor: '#ffffff' }}>
                     {grupa.proby.map(proba => {
@@ -321,17 +335,17 @@ export default function Harmonogram({ profile }) {
                           {czyEdytowana ? (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', backgroundColor: '#fff', padding: '15px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
                               <h4 style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#1e293b' }}>Edycja próby:</h4>
-                              <div style={{ display: 'flex', gap: '8px' }}>
-                                <input type="date" value={editDataProby} onChange={(e) => setEditDataProby(e.target.value)} onClick={(e) => e.target.showPicker && e.target.showPicker()} style={{ flex: 1, padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '13px' }} />
-                                <input type="time" value={editGodzinaProby} onChange={(e) => setEditGodzinaProby(e.target.value)} onClick={(e) => e.target.showPicker && e.target.showPicker()} style={{ flex: 1, padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '13px' }} />
-                                <select value={editSekcja} onChange={(e) => setEditSekcja(e.target.value)} style={{ flex: 1, padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '13px' }}>
+                              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                <input type="date" value={editDataProby} onChange={(e) => setEditDataProby(e.target.value)} onClick={(e) => e.target.showPicker && e.target.showPicker()} style={{ flex: '1 1 120px', ...inputStyle }} />
+                                <input type="time" value={editGodzinaProby} onChange={(e) => setEditGodzinaProby(e.target.value)} onClick={(e) => e.target.showPicker && e.target.showPicker()} style={{ flex: '1 1 100px', ...inputStyle }} />
+                                <select value={editSekcja} onChange={(e) => setEditSekcja(e.target.value)} style={{ flex: '1 1 100px', ...inputStyle }}>
                                   <option value="balet">Balet</option><option value="chór">Chór</option><option value="kapela">Kapela</option>
                                 </select>
                               </div>
-                              <textarea value={editOpisCwiczen} onChange={(e) => setEditOpisCwiczen(e.target.value)} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '13px' }} />
+                              <textarea value={editOpisCwiczen} onChange={(e) => setEditOpisCwiczen(e.target.value)} style={{ ...inputStyle, resize: 'vertical' }} />
                               <div style={{ display: 'flex', gap: '8px', marginTop: '5px' }}>
-                                <button onClick={() => zapiszEdycje(proba.id)} style={{ padding: '6px 14px', backgroundColor: '#10b981', color: '#fff', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Zapisz 💾</button>
-                                <button onClick={anulujEdycje} style={{ padding: '6px 14px', backgroundColor: '#94a3b8', color: '#fff', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Anuluj</button>
+                                <button onClick={() => zapiszEdycje(proba.id)} style={{ padding: '8px 14px', backgroundColor: '#10b981', color: '#fff', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Zapisz 💾</button>
+                                <button onClick={anulujEdycje} style={{ padding: '8px 14px', backgroundColor: '#94a3b8', color: '#fff', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Anuluj</button>
                               </div>
                             </div>
                           ) : (
@@ -346,7 +360,7 @@ export default function Harmonogram({ profile }) {
                                   </h4>
                                 </div>
                                 {isKadra && (
-                                  <div style={{ display: 'flex', gap: '6px' }}>
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                                     <button onClick={() => przelaczObecnosc(proba.id)} style={{ padding: '5px 10px', backgroundColor: '#8b5cf6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
                                       {isRozwinietaDlaKadry ? 'Zwiń listę ▲' : 'Sprawdź obecność 📝'}
                                     </button>
@@ -372,8 +386,8 @@ export default function Harmonogram({ profile }) {
                                   {deklaracjaUzytkownika === false && (
                                     <div style={{ marginTop: '12px', padding: '12px', backgroundColor: '#fef2f2', borderRadius: '6px', border: '1px solid #fecaca' }}>
                                       <p style={{ margin: '0 0 5px 0', fontSize: '13px', color: '#991b1b', fontWeight: '600' }}>Powód nieobecności:</p>
-                                      <div style={{ display: 'flex', gap: '8px' }}>
-                                        <input type="text" placeholder="np. Choroba" value={aktywneInputyUsprawiedliwienia[proba.id] || ''} onChange={(e) => setAktywneInputyUsprawiedliwienia({ ...aktywneInputyUsprawiedliwienia, [proba.id]: e.target.value })} style={{ flex: 1, padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '13px' }} />
+                                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                        <input type="text" placeholder="np. Choroba" value={aktywneInputyUsprawiedliwienia[proba.id] || ''} onChange={(e) => setAktywneInputyUsprawiedliwienia({ ...aktywneInputyUsprawiedliwienia, [proba.id]: e.target.value })} style={{ flex: '1 1 150px', ...inputStyle }} />
                                         <button onClick={() => zapiszUsprawiedliwienie(proba.id)} style={{ padding: '8px 14px', backgroundColor: '#ef4444', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' }}>Zapisz</button>
                                       </div>
                                     </div>
