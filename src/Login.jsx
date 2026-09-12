@@ -103,7 +103,7 @@ export default function Login() {
               >
                 <option value="członek">Członek zespołu</option>
                 <option value="pracownik">Pracownik / Instruktor</option>
-                <option value="kierownik">Kierownik</option>
+                {/* Opcja kierownika została usunięta */}
               </select>
             </div>
 
