@@ -10,10 +10,12 @@ export default async function handler(req, res) {
       method: "POST",
       headers: {
         "Content-Type": "application/json; charset=utf-8",
-        "Authorization": "Key os_v2_app_fbd76qqndrewrhsqur7ef7o2ywilikq745jeypvveiumysplzbcpdtr2lfffpxlc27po2cdvjutnz3parwxrn7c6ckykrgmkd4gv4oy"
+        // Używamy "Bearer" zamiast "Key" dla kluczy os_v2_...
+        "Authorization": "Bearer os_v2_app_fbd76qqndrewrhsqur7ef7o2ywilikq745jeypvveiumysplzbcpdtr2lfffpxlc27po2cdvjutnz3parwxrn7c6ckykrgmkd4gv4oy"
       },
       body: JSON.stringify({
         app_id: "2847ff42-0d1c-4968-9e50-a47e42fddac5",
+        target_channel: "push", // Wymagane przez nowy endpoint API
         included_segments: ["All"],
         headings: { "en": tytul },
         contents: { "en": tresc }
