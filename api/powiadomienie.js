@@ -9,8 +9,8 @@ export default async function handler(req, res) {
     const response = await fetch("https://onesignal.com/api/v1/notifications", {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
-        "Authorization": "Key os_v2_app_fbd76qqndrewrhsqur7ef7o2yuvi5cfyhwdunweezdincckgj5sxlxbqnlkqmgnlemdqhwndx7odus2ugcj6szq5ngjsadkb5ym53oa"
+        "Content-Type": "application/json; charset=utf-8",
+        "Authorization": "Basic os_v2_app_fbd76qqndrewrhsqur7ef7o2yuvi5cfyhwdunweezdincckgj5sxlxbqnlkqmgnlemdqhwndx7odus2ugcj6szq5ngjsadkb5ym53oa"
       },
       body: JSON.stringify({
         app_id: "2847ff42-0d1c-4968-9e50-a47e42fddac5",
@@ -21,10 +21,7 @@ export default async function handler(req, res) {
     });
 
     const data = await response.json();
-    
-    // WYPISUJEMY PEŁNĄ ODPOWIEDŹ W KONSOLI VERCELA
     console.log("ODPOWIEDŹ ONESIGNAL:", JSON.stringify(data));
-
     return res.status(200).json(data);
   } catch (error) {
     return res.status(500).json({ error: error.message });
