@@ -8,6 +8,7 @@ import PodgladCzlonka from './PodgladCzlonka';
 import PodgladObecnosciCzlonka from './PodgladObecnosciCzlonka';
 import Koncerty from './Koncerty';
 import ZarzadzanieCzlonkami from './ZarzadzanieCzlonkami';
+import OneSignal from 'react-onesignal';
 
 export default function App() {
   const [session, setSession] = useState(null);
@@ -15,6 +16,26 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [aktywnaZakladka, setAktywnaZakladka] = useState('harmonogram');
 
+  // INICJALIZACJA ONESIGNAL (Powiadomienia Push)
+  useEffect(() => {
+    const runOneSignal = async () => {
+      try {
+        await OneSignal.init({
+          appId: "2847ff42-0d1c-4968-9e50-a47e42fddac5",
+          allowLocalhostAsSecureOrigin: true, // Pozwala testować lokalnie
+        });
+        
+        // Wyświetla okienko (Slidedown) z prośbą o zgodę na powiadomienia
+        OneSignal.Slidedown.promptPush();
+      } catch (error) {
+        console.error('Błąd inicjalizacji OneSignal:', error);
+      }
+    };
+
+    runOneSignal();
+  }, []);
+
+  // OBSŁUGA SESJI I LOGOWANIA
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
