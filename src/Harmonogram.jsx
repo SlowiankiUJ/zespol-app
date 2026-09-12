@@ -92,19 +92,14 @@ export default function Harmonogram({ profile }) {
     } else {
       setKomunikat('Próba dodana pomyślnie! ✅ Wysyłam powiadomienie...');
       
-      // WYSYŁANIE POWIADOMIENIA PUSH
+     // WYSYŁANIE POWIADOMIENIA PUSH (przez własne API Vercel)
       try {
-        await fetch("https://onesignal.com/api/v1/notifications", {
+        await fetch("/api/powiadomienie", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json; charset=utf-8",
-            "Authorization": "Key os_v2_app_fbd76qqndrewrhsqur7ef7o2yuvi5cfyhwdunweezdincckgj5sxlxbqnlkqmgnlemdqhwndx7odus2ugcj6szq5ngjsadkb5ym53oa"
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            app_id: "2847ff42-0d1c-4968-9e50-a47e42fddac5",
-            included_segments: ["Total Subscriptions"],
-            headings: { "en": "Nowa próba! 📅" },
-            contents: { "en": `Zaplanowano nową próbę dla sekcji: ${sekcja}. Sprawdź harmonogram!` }
+            tytul: "Nowa próba! 📅",
+            tresc: `Zaplanowano nową próbę dla sekcji: ${sekcja}. Sprawdź harmonogram!`
           })
         });
       } catch (err) {
