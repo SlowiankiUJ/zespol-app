@@ -18,14 +18,15 @@ export default function Osiagniecia({ profile }) {
 
   const obliczOsiagniecia = async () => {
     try {
-      // 1. Pobieramy koncerty, w których użytkownik faktycznie ma status ZAKWALIFIKOWANY (true)
+      // 1. Pobieramy wszystkie deklaracje koncertów użytkownika i filtrujemy w JS, 
+      // żeby mieć 100% pewności, że liczy się tylko zakwalifikowany === true
       const { data: dekKoncerty } = await supabase
         .from('deklaracje_koncerty')
         .select('id_koncertu, zakwalifikowany')
-        .eq('id_uzytkownika', profile.id)
-        .eq('zakwalifikowany', true);
+        .eq('id_uzytkownika', profile.id);
 
-      const liczbaKoncertow = dekKoncerty ? dekKoncerty.length : 0;
+      const zakwalifikowaneKoncerty = dekKoncerty ? dekKoncerty.filter(d => d.zakwalifikowany === true) : [];
+      const liczbaKoncertow = zakwalifikowaneKoncerty.length;
 
       // 2. Pobieramy występy w obsadzie układów
       const { data: obsadaData } = await supabase
