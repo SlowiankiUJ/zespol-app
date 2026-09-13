@@ -3,9 +3,10 @@ import { supabase } from './supabaseClient';
 
 export default function Osiagniecia({ profile }) {
   const [staty, setStaty] = useState({
-    koncertyUdział: 0,       // Liczba koncertów, na które zadeklarował "Wezmę udział" / był zakwalifikowany
-    występyObsada: 0,        // Ile razy wystąpił w programie (obsada układów)
-    miesieczna100Frekwencja: false // Czy miał 100% frekwencji w jakimkolwiek miesiącu
+    koncertyUdział: 0,
+    występyObsada: 0,
+    miesieczna100Frekwencja: false,
+    streak: 0
   });
   const [loading, setLoading] = useState(true);
 
@@ -34,14 +35,21 @@ export default function Osiagniecia({ profile }) {
 
       const liczbaWystepow = obsadaData ? obsadaData.length : 0;
 
-      // 3. Sprawdzamy frekwencję miesięczną (100% w danym miesiącu)
+      // 3. Pobieramy deklaracje obecności do frekwencji miesięcznej oraz streaka
       const { data: obecnosciData } = await supabase
         .from('deklaracje_obecnosci')
-        .select('obecny, harmonogram_prob(data_proba)')
+        .select('obecny, id_proby, harmonogram_prob(data_proba)')
         .eq('id_uzytkownika', profile.id);
 
+      const { data: probyList } = await supabase
+        .from('proby')
+        .select('*');
+
       let ma100PrzezMiesiac = false;
-      if (obecnosciData && obecnosciData.length > 0) {
+      let aktualnyStreak = 0;
+
+      if (obecnosciData && obecnosciData.length > 0 && probyList) {
+        // --- FREKWENCJA MIESIĘCZNA ---
         const miesiaceMap = {};
         obecnosciData.forEach(item => {
           if (item.harmonogram_prob && item.harmonogram_prob.data_proba) {
@@ -56,11 +64,42 @@ export default function Osiagniecia({ profile }) {
           }
         });
 
-        // Sprawdzamy, czy w jakimkolwiek miesiącu było 100% obecności (min. 3 próby)
         for (const mKey of Object.keys(miesiaceMap)) {
           const m = miesiaceMap[mKey];
           if (m.łącznie >= 3 && m.obecne === m.łącznie) {
             ma100PrzezMiesiac = true;
+            break;
+          }
+        }
+
+        // --- STREAK PRÓB (Z pominięciem prób generalnych) ---
+        const probaInfoMap = {};
+        probyList.forEach(p => {
+          if (p.id && p.data_czas) {
+            probaInfoMap[p.id] = {
+              data_czas: p.data_czas,
+              sekcja: p.sekcja
+            };
+          }
+        });
+
+        const wpisyZUstalonaData = obecnosciData
+          .map(d => {
+            const info = probaInfoMap[d.id_proby];
+            return {
+              obecny: d.obecny,
+              data_proba: info ? info.data_czas : null,
+              sekcja: info ? info.sekcja : null
+            };
+          })
+          .filter(item => item.data_proba && item.sekcja !== 'generalna' && (item.obecny === true || item.obecny === false));
+
+        wpisyZUstalonaData.sort((a, b) => new Date(b.data_proba) - new Date(b.data_proba));
+
+        for (const wpis of wpisyZUstalonaData) {
+          if (wpis.obecny === true) {
+            aktualnyStreak++;
+          } else if (wpis.obecny === false) {
             break;
           }
         }
@@ -69,7 +108,8 @@ export default function Osiagniecia({ profile }) {
       setStaty({
         koncertyUdział: liczbaKoncertow,
         występyObsada: liczbaWystepow,
-        miesieczna100Frekwencja: ma100PrzezMiesiac
+        miesieczna100Frekwencja: ma100PrzezMiesiac,
+        streak: aktualnyStreak
       });
     } catch (err) {
       console.error('Błąd obliczania osiągnięć:', err);
@@ -78,39 +118,63 @@ export default function Osiagniecia({ profile }) {
     }
   };
 
-  // Definicja odznak / medali
+  // Definicja odznak i medali z grafikami/ikonami
   const generujOdznaki = () => {
     const odznaki = [];
 
-    // --- KRYTERIUM: FREKWENCJA ---
+    // --- STREAK PRÓB Z RZĘDU (5, 15, 30, 50, 100) ---
+    const progiStreaka = [
+      { prog: 5, tytul: 'Rozgrzewka w tańcu', opis: 'Starasz się, oby tak dalej! Pęcherze na stopach powoli stają się Twoimi najlepszymi przyjaciółmi.', ikona: '👟' },
+      { prog: 15, tytul: 'Żelazna kondycja', opis: 'Przeżyłeś 15 prób z rzędu. Kierownik zaczyna się zastanawiać, czy Ty w ogóle sypiasz w domu.', ikona: '🪵' },
+      { prog: 30, tytul: 'Legenda parkietu i nut', opis: '30 prób bez ani jednej zwolny! Twoje buty do tańca zużyły się szybciej niż traktor w żniwa.', ikona: '🎻' },
+      { prog: 50, tytul: 'Niezniszczalny Słowianin', opis: '50 prób z rzędu?! Prawdopodobnie potrafisz zatańczyć krakowiaka przez sen.', ikona: '🌾' },
+      { prog: 100, tytul: 'Bóg Sceny i Parkietu', opis: '100 prób z rzędu! Status mitologiczny. Krzesła w kącie sali kłaniają się Tobie w pas.', ikona: '👑' }
+    ];
+
+    progiStreaka.forEach(s => {
+      const aktualny = Math.min(staty.streak, s.prog);
+      odznaki.push({
+        tytuł: `${s.tytul} (${s.prog} prób)`,
+        opis: s.opis,
+        ikona: s.ikona,
+        zdobyte: staty.streak >= s.prog,
+        postęp: `${aktualny}/${s.prog}`,
+        kategoria: 'Streak prób'
+      });
+    });
+
+    // --- FREKWENCJA ---
     odznaki.push({
-      tytuł: 'Perfekcjonista miesiąca 🌟',
+      tytuł: 'Perfekcjonista miesiąca',
       opis: 'Utrzymuj 100% frekwencji na próbach przez cały miesiąc (min. 3 próby).',
+      ikona: '🌟',
       zdobyte: staty.miesieczna100Frekwencja,
       postęp: staty.miesieczna100Frekwencja ? '1/1' : '0/1',
       kategoria: 'Frekwencja'
     });
 
-    // --- KRYTERIUM: KAMIENIE MILOWE - KONCERTY (1, 5, 10, 25, 50, 100) ---
+    // --- KAMIENIE MILOWE - KONCERTY ---
     const progiKoncertow = [1, 5, 10, 25, 50, 100];
     progiKoncertow.forEach(prog => {
       const aktualny = Math.min(staty.koncertyUdział, prog);
       odznaki.push({
-        tytuł: `Człowiek Sceny: ${prog} ${prog === 1 ? 'Koncert' : prog < 5 ? 'Koncerty' : 'Koncertów'} 🎫`,
+        tytuł: `Człowiek Sceny: ${prog} ${prog === 1 ? 'Koncert' : prog < 5 ? 'Koncerty' : 'Koncertów'}`,
         opis: `Weź udział w ${prog} ${prog === 1 ? 'koncercie' : 'koncertach'} zespołu.`,
+        ikona: '🎫',
         zdobyte: staty.koncertyUdział >= prog,
         postęp: `${aktualny}/${prog}`,
         kategoria: 'Koncerty'
       });
     });
 
-    // --- KRYTERIUM: ILOŚĆ WYSTĘPÓW W PROGRAMIE / UKŁADACH (10 do 100) ---
+    // --- ILOŚĆ WYSTĘPÓW W PROGRAMIE ---
     const progiWystepow = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
     progiWystepow.forEach(prog => {
       const aktualny = Math.min(staty.występyObsada, prog);
       odznaki.push({
-        tytuł: `Wirtuoz Parkietu: ${prog} Występów 💃`,
+        tytuł: `Wirtuoz Parkietu: ${prog} Występów`,
         opis: `Zostań wyznaczony do obsady układów w programach łącznie ${prog} razy.`,
+        ikona: '💃',
         zdobyte: staty.występyObsada >= prog,
         postęp: `${aktualny}/${prog}`,
         kategoria: 'Występy'
@@ -132,7 +196,9 @@ export default function Osiagniecia({ profile }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '20px' }}>
         <div>
           <h2 style={{ color: '#1e293b', margin: '0 0 5px 0', fontSize: '20px' }}>Twoje Osiągnięcia i Medale 🏆</h2>
-          <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>Zbieraj odznaki za aktywność, frekwencję i udział w koncertach!</p>
+          <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>
+            Zbieraj odznaki za aktywność, frekwencję, koncerty oraz passę prób! Aktualny streak: <strong style={{ color: '#8b5cf6' }}>🔥 {staty.streak} prób</strong>
+          </p>
         </div>
         <div style={{ padding: '8px 16px', backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '20px', color: '#15803d', fontWeight: 'bold', fontSize: '14px' }}>
           Zdobyte medale: {zdobyteCount} / {odznaki.length} 🌟
@@ -140,54 +206,68 @@ export default function Osiagniecia({ profile }) {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '15px' }}>
-        {odznaki.map((odznaka, index) => (
-          <div 
-            key={index} 
-            style={{ 
-              padding: '18px', 
-              borderRadius: '10px', 
-              border: odznaka.zdobyte ? '2px solid #10b981' : '1px solid #cbd5e1', 
-              backgroundColor: odznaka.zdobyte ? '#f0fdf4' : '#f8fafc',
-              opacity: odznaka.zdobyte ? 1 : 0.75,
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'space-between',
-              boxShadow: odznaka.zdobyte ? '0 4px 6px rgba(16, 185, 129, 0.05)' : 'none'
-            }}
-          >
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 'bold', textTransform: 'uppercase', color: '#64748b', backgroundColor: '#e2e8f0', padding: '2px 6px', borderRadius: '4px' }}>
-                  {odznaka.kategoria}
-                </span>
-                <span style={{ fontSize: '18px' }}>{odznaka.zdobyte ? '🏅' : '🔒'}</span>
-              </div>
-              <h4 style={{ margin: '0 0 6px 0', fontSize: '16px', color: odznaka.zdobyte ? '#065f46' : '#334155' }}>
-                {odznaka.tytuł}
-              </h4>
-              <p style={{ margin: '0 0 15px 0', fontSize: '13px', color: '#475569', lineHeight: '1.4' }}>
-                {odznaka.opis}
-              </p>
-            </div>
+        {odznaki.map((odznaka, index) => {
+          // Efekt szarości (grayscale) i przezroczystości dla zablokowanych odznak
+          const stylIkony = {
+            fontSize: '36px',
+            filter: odznaka.zdobyte ? 'none' : 'grayscale(100%) brightness(150%)',
+            opacity: odznaka.zdobyte ? 1 : 0.35,
+            transition: 'all 0.3s ease'
+          };
 
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: 'bold', color: '#64748b', marginBottom: '4px' }}>
-                <span>Postęp:</span>
-                <span>{odznaka.postęp}</span>
+          return (
+            <div 
+              key={index} 
+              style={{ 
+                padding: '18px', 
+                borderRadius: '10px', 
+                border: odznaka.zdobyte ? '2px solid #10b981' : '1px solid #cbd5e1', 
+                backgroundColor: odznaka.zdobyte ? '#f0fdf4' : '#f8fafc',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                boxShadow: odznaka.zdobyte ? '0 4px 12px rgba(16, 185, 129, 0.15)' : 'none',
+                transition: 'all 0.3s ease'
+              }}
+            >
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 'bold', textTransform: 'uppercase', color: '#64748b', backgroundColor: '#e2e8f0', padding: '2px 8px', borderRadius: '4px' }}>
+                    {odznaka.kategoria}
+                  </span>
+                  {/* Wyświetlanie grafiki/ikony z dynamicznym filtrem szarości */}
+                  <div style={{ padding: '6px', backgroundColor: odznaka.zdobyte ? '#d1fae5' : '#e2e8f0', borderRadius: '50%', width: '48px', height: '48px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                    <span style={stylIkony}>{odznaka.ikona}</span>
+                  </div>
+                </div>
+
+                <h4 style={{ margin: '0 0 6px 0', fontSize: '16px', color: odznaka.zdobyte ? '#065f46' : '#334155' }}>
+                  {odznaka.tytuł}
+                </h4>
+                <p style={{ margin: '0 0 15px 0', fontSize: '13px', color: '#475569', lineHeight: '1.4' }}>
+                  {odznaka.opis}
+                </p>
               </div>
-              <div style={{ width: '100%', height: '8px', backgroundColor: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
-                <div 
-                  style={{ 
-                    width: odznaka.zdobyte ? '100%' : '0%', 
-                    height: '100%', 
-                    backgroundColor: odznaka.zdobyte ? '#10b981' : '#cbd5e1',
-                    transition: 'width 0.4s ease'
-                  }} 
-                />
+
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: 'bold', color: '#64748b', marginBottom: '4px' }}>
+                  <span>Postęp:</span>
+                  <span>{odznaka.postęp}</span>
+                </div>
+                <div style={{ width: '100%', height: '8px', backgroundColor: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
+                  <div 
+                    style={{ 
+                      width: odznaka.zdobyte ? '100%' : '0%', 
+                      height: '100%', 
+                      backgroundColor: odznaka.zdobyte ? '#10b981' : '#cbd5e1',
+                      transition: 'width 0.4s ease'
+                    }} 
+                  />
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
