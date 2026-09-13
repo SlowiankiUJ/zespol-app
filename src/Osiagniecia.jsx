@@ -18,7 +18,7 @@ export default function Osiagniecia({ profile }) {
 
   const obliczOsiagniecia = async () => {
     try {
-      // 1. Pobieramy koncerty, w których użytkownik jest ZAKWALIFIKOWANY przez kierownika
+      // 1. Pobieramy koncerty, w których użytkownik faktycznie ma status ZAKWALIFIKOWANY (true)
       const { data: dekKoncerty } = await supabase
         .from('deklaracje_koncerty')
         .select('id_koncertu, zakwalifikowany')
@@ -35,7 +35,7 @@ export default function Osiagniecia({ profile }) {
 
       const liczbaWystepow = obsadaData ? obsadaData.length : 0;
 
-      // 3. Pobieramy deklaracje obecności (poprawione zapytanie bez 'harmonogram_prob')
+      // 3. Pobieramy deklaracje obecności do frekwencji miesięcznej oraz streaka
       const { data: obecnosciData } = await supabase
         .from('deklaracje_obecnosci')
         .select('obecny, id_proby')
@@ -161,7 +161,7 @@ export default function Osiagniecia({ profile }) {
       const aktualny = Math.min(staty.koncertyUdział, prog);
       odznaki.push({
         tytuł: `Człowiek Sceny: ${prog} ${prog === 1 ? 'Koncert' : prog < 5 ? 'Koncerty' : 'Koncertów'}`,
-        opis: `Weź udział w ${prog} ${prog === 1 ? 'koncercie' : 'koncertach'} zespołu.`,
+        opis: `Weź udział w ${prog} ${prog === 1 ? 'koncercie' : 'koncertach'} zespołu (wymagana kwalifikacja w składzie).`,
         ikona: '🎫',
         zdobyte: staty.koncertyUdział >= prog,
         postęp: `${aktualny}/${prog}`,
