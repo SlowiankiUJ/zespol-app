@@ -6,13 +6,15 @@ export default function SkanerQR({ profile }) {
   const [komunikat, setKomunikat] = useState('');
   const [loading, setLoading] = useState(false);
   const [skanuje, setSkanuje] = useState(false);
+  const [odczytanyKod, setOdczytanyKod] = useState('');
   
   const videoRef = useRef(null);
   const mediaStreamRef = useRef(null);
 
-  const stałyLinkQR = window.location.origin + '?akcja=obecnosc_qr';
+  // TAJNY, UNIKALNY PODPIS KODU QR (musi być identyczny w wygenerowanym QR i w skanerze)
+  const TAJNY_TOKEN_SALI = 'ZPIT_UJ_SLOWIANKI_OFICJALNY_KOD_SALI_PROB';
 
-  // Funkcja zapisująca obecność w bazie po zeskanowaniu
+  // Funkcja zapisująca obecność w bazie po poprawnym odczycie kodu QR
   const oznaczObecnoscDzisiaj = async () => {
     setLoading(true);
     setKomunikat('');
@@ -21,6 +23,7 @@ export default function SkanerQR({ profile }) {
       const dzis = new Date();
       const dzisString = dzis.toISOString().split('T')[0];
 
+      // 1. Sprawdzamy czy dzisiaj jest próba
       const { data: probyDzis, error: probaErr } = await supabase
         .from('proby')
         .select('*')
@@ -32,6 +35,7 @@ export default function SkanerQR({ profile }) {
       if (!probyDzis || probyDzis.length === 0) {
         setKomunikat('❌ Dzisiaj nie ma zaplanowanej żadnej próby w harmonogramie!');
         setLoading(false);
+        setOdczytanyKod('');
         return;
       }
 
@@ -51,9 +55,11 @@ export default function SkanerQR({ profile }) {
       if (!dzisiejszaProba) {
         setKomunikat('⚠️ Dzisiaj odbywa się próba, ale nie dotyczy ona Twojej sekcji.');
         setLoading(false);
+        setOdczytanyKod('');
         return;
       }
 
+      // 2. Zapisujemy obecność
       const { error: upsertErr } = await supabase
         .from('deklaracje_obecnosci')
         .upsert([
@@ -67,7 +73,8 @@ export default function SkanerQR({ profile }) {
 
       if (upsertErr) throw upsertErr;
 
-      setKomunikat('✅ Sukces! Kod QR został pomyślnie zeskanowany. Twoja obecność została zarejestrowana! 🔥');
+      setKomunikat('✅ Sukces! Prawidłowo zeskanowano kod QR sali. Twoja obecność została zarejestrowana! 🔥');
+      setOdczytanyKod('');
     } catch (err) {
       console.error('Błąd rejestracji obecności QR:', err);
       setKomunikat('❌ Wystąpił błąd podczas zapisywania obecności.');
@@ -76,13 +83,14 @@ export default function SkanerQR({ profile }) {
     }
   };
 
-  // Uruchamianie kamery w telefonie/przeglądarce
-  const wlaczKameru = async () => {
+  // Uruchamianie kamery
+  const wlaczKamere = async () => {
     setKomunikat('');
+    setOdczytanyKod('');
     setSkanuje(true);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'environment' } // Używa tylnej kamery w telefonie
+        video: { facingMode: 'environment' } 
       });
       mediaStreamRef.current = stream;
       if (videoRef.current) {
@@ -91,7 +99,7 @@ export default function SkanerQR({ profile }) {
       }
     } catch (err) {
       console.error("Błąd dostępu do kamery:", err);
-      setKomunikat('❌ Brak dostępu do kamery lub urządzenie jej nie obsługuje. Sprawdź uprawnienia przeglądarki.');
+      setKomunikat('❌ Brak dostępu do kamery. Sprawdź uprawnienia w przeglądarce.');
       setSkanuje(false);
     }
   };
@@ -105,7 +113,7 @@ export default function SkanerQR({ profile }) {
     setSkanuje(false);
   };
 
-  // Automatyczne skanowanie klatek wideo za pomocą BarcodeDetector (jeśli wspierany) lub przycisku potwierdzenia
+  // Skanowanie klatek wideo przez BarcodeDetector
   useEffect(() => {
     let interval = null;
     if (skanuje && 'BarcodeDetector' in window) {
@@ -116,16 +124,24 @@ export default function SkanerQR({ profile }) {
           try {
             const codes = await barcodeDetector.detect(videoRef.current);
             if (codes.length > 0) {
-              // Zeskanowano kod! Zatrzymujemy kamerę i zapisujemy obecność
-              clearInterval(interval);
-              zatrzymajKamere();
-              oznaczObecnoscDzisiaj();
+              const zawartoscKodu = codes[0].rawValue;
+              
+              // WERYFIKACJA: Sprawdzamy czy odczytany kod QR zawiera dokładnie nasz tajny token sali!
+              if (zawartoscKodu === TAJNY_TOKEN_SALI) {
+                clearInterval(interval);
+                zatrzymajKamere();
+                setOdczytanyKod(zawartoscKodu);
+                oznaczObecnoscDzisiaj();
+              } else {
+                // Jeśli to jakikolwiek inny kod QR (np. z butelki wody), informujemy użytkownika
+                setKomunikat('⚠️ Zeskanowano nieprawidłowy kod QR! Podejdź do oficjalnego kodu sali prób.');
+              }
             }
           } catch (e) {
-            // Ignorujemy błędy detekcji w pojedynczych klatkach
+            // Ignorujemy błędy pojedynczych klatek
           }
         }
-      }, 500);
+      }, 400);
     }
 
     return () => {
@@ -133,7 +149,6 @@ export default function SkanerQR({ profile }) {
     };
   }, [skanuje]);
 
-  // Czyszczenie przy wyjściu z komponentu
   useEffect(() => {
     return () => {
       zatrzymajKamere();
@@ -146,18 +161,18 @@ export default function SkanerQR({ profile }) {
     <div style={{ marginTop: '20px', padding: '25px', border: '1px solid #e2e8f0', borderRadius: '12px', backgroundColor: '#ffffff', boxShadow: '0 4px 6px rgba(0,0,0,0.02)', textAlign: 'center' }}>
       <h2 style={{ color: '#1e293b', marginBottom: '10px', fontSize: '20px' }}>Szybka Obecność przez Kod QR 📱</h2>
       <p style={{ color: '#64748b', fontSize: '14px', marginBottom: '25px' }}>
-        Zeskanuj stały kod QR na sali prób za pomocą aparatu telefonu.
+        Zeskanuj oficjalny kod QR sali prób, aby potwierdzić swoją obecność.
       </p>
 
-      {/* WIDOK DLA KADRY */}
+      {/* WIDOK DLA KADRY (Generuje kod QR zawierający tajny token) */}
       {isKadra && (
         <div style={{ marginBottom: '30px', padding: '20px', backgroundColor: '#f8fafc', borderRadius: '10px', border: '1px solid #cbd5e1', display: 'inline-block' }}>
-          <p style={{ fontWeight: 'bold', color: '#1e293b', marginBottom: '15px' }}>📌 Stały kod QR Zespołu (dla sali prób):</p>
+          <p style={{ fontWeight: 'bold', color: '#1e293b', marginBottom: '15px' }}>📌 Oficjalny kod QR Sali Prób (dla zespołu):</p>
           <div style={{ padding: '15px', backgroundColor: '#fff', borderRadius: '8px', display: 'inline-block', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
-            <QRCodeSVG value={stałyLinkQR} size={200} level="H" />
+            <QRCodeSVG value={TAJNY_TOKEN_SALI} size={200} level="H" />
           </div>
           <p style={{ fontSize: '12px', color: '#64748b', marginTop: '12px', maxWidth: '300px', marginInline: 'auto' }}>
-            Wyświetl ten kod na ekranie lub wydrukuj na sali prób.
+            Wyświetl ten kod na ekranie na sali prób. Tylko ten konkretny kod zostanie uznany przez system.
           </p>
         </div>
       )}
@@ -170,10 +185,10 @@ export default function SkanerQR({ profile }) {
           {!skanuje ? (
             <>
               <p style={{ fontSize: '13px', color: '#4b5563', marginBottom: '20px' }}>
-                Kliknij poniżej, aby uruchomić aparat i zeskanować kod QR na sali.
+                Kliknij poniżej, aby włączyć aparat i skierować go na kod QR znajdujący się na sali.
               </p>
               <button
-                onClick={wlaczKameru}
+                onClick={wlaczKamere}
                 style={{
                   width: '100%',
                   padding: '14px',
@@ -187,12 +202,11 @@ export default function SkanerQR({ profile }) {
                   boxShadow: '0 4px 6px rgba(139, 92, 246, 0.2)'
                 }}
               >
-                📷 Włącz aparat do skanowania
+                📷 Włącz aparat i skanuj kod sali
               </button>
             </>
           ) : (
             <div>
-              {/* Podgląd z kamery wideo */}
               <div style={{ position: 'relative', width: '100%', backgroundColor: '#000', borderRadius: '8px', overflow: 'hidden', marginBottom: '15px' }}>
                 <video 
                   ref={videoRef} 
@@ -204,53 +218,31 @@ export default function SkanerQR({ profile }) {
               </div>
 
               <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '12px' }}>
-                Nakieruj aparat na kod QR znajdujący się na sali... (Jeśli przeglądarce zajmie to chwilę lub nie wykryje automatycznie, możesz użyć przycisku poniżej:)
+                Trzymaj aparat stabilnie i nakieruj go na oficjalny kod QR wywieszony na sali...
               </p>
 
-              <div style={{ display: 'flex', gap: '10px', flexDirection: 'column' }}>
-                <button
-                  onClick={() => {
-                    zatrzymajKamere();
-                    oznaczObecnoscDzisiaj();
-                  }}
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    backgroundColor: '#10b981',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: '6px',
-                    fontSize: '13px',
-                    fontWeight: 'bold',
-                    cursor: 'pointer'
-                  }}
-                >
-                  ✨ Potwierdź obecność ręcznie (po zeskanowaniu)
-                </button>
-
-                <button
-                  onClick={zatrzymajKamere}
-                  style={{
-                    width: '100%',
-                    padding: '8px',
-                    backgroundColor: '#ef4444',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: '6px',
-                    fontSize: '13px',
-                    fontWeight: 'bold',
-                    cursor: 'pointer'
-                  }}
-                >
-                  Anuluj ❌
-                </button>
-              </div>
+              <button
+                onClick={zatrzymajKamere}
+                style={{
+                  width: '100%',
+                  padding: '8px',
+                  backgroundColor: '#ef4444',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontSize: '13px',
+                  fontWeight: 'bold',
+                  cursor: 'pointer'
+                }}
+              >
+                Anuluj ❌
+              </button>
             </div>
           )}
         </div>
       )}
 
-      {loading && <p style={{ marginTop: '15px', color: '#64748b' }}>Sprawdzanie próby i zapisywanie obecności...</p>}
+      {loading && <p style={{ marginTop: '15px', color: '#64748b' }}>Weryfikacja kodu i zapisywanie obecności...</p>}
 
       {komunikat && (
         <div style={{ marginTop: '20px', padding: '12px', borderRadius: '8px', backgroundColor: komunikat.includes('✅') ? '#f0fdf4' : '#fef2f2', border: `1px solid ${komunikat.includes('✅') ? '#bbf7d0' : '#fecaca'}`, color: komunikat.includes('✅') ? '#15803d' : '#991b1b', fontWeight: '600', fontSize: '14px', display: 'inline-block' }}>
