@@ -8,21 +8,81 @@ export default function SkanerQR({ profile }) {
   const [loading, setLoading] = useState(false);
   const [skanuje, setSkanuje] = useState(false);
 
-  // TAJNY, UNIKALNY PODPIS KODU QR (musi być identyczny w wygenerowanym QR i w skanerze)
+  // TAJNY, UNIKALNY PODPIS KODU QR
   const TAJNY_TOKEN_SALI = 'ZPIT_UJ_SLOWIANKI_OFICJALNY_KOD_SALI_PROB';
-
   const stałyLinkQR = window.location.origin + '?akcja=obecnosc_qr';
 
-  // Funkcja zapisująca obecność w bazie po poprawnym odczycie kodu QR
-  const oznaczObecnoscDzisiaj = async () => {
+  // WSPÓŁRZĘDNE GPS SALI PRÓB
+  const SALA_LATITUDE = 50.066196620302165;
+  const SALA_LONGITUDE = 19.901790879228376;
+  const MAKSYMALNY_DYSTANS_METRY = 200; // Dozwolony promień
+
+  // Wzór Haversine'a do obliczania odległości w metrach
+  const obliczDystansMetry = (lat1, lon1, lat2, lon2) => {
+    const R = 6371e3; // Promień Ziemi w metrach
+    const phi1 = (lat1 * Math.PI) / 180;
+    const phi2 = (lat2 * Math.PI) / 180;
+    const deltaPhi = ((lat2 - lat1) * Math.PI) / 180;
+    const deltaLambda = ((lon2 - lon1) * Math.PI) / 180;
+
+    const a =
+      Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+      Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    return R * c;
+  };
+
+  // Pobieranie lokalizacji GPS użytkownika
+  const pobierzLokalizacje = () => {
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject(new Error('Twoja przeglądarka nie wspiera geolokalizacji.'));
+      } else {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            resolve({
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude
+            });
+          },
+          (error) => {
+            reject(new Error('Nie udało się pobrać lokalizacji GPS. Upewnij się, że zezwoliłeś na dostęp do lokalizacji w telefonie.'));
+          },
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
+      }
+    });
+  };
+
+  // Funkcja sprawdzająca GPS, bazę i zapisująca obecność
+  const oznaczObecnoscZGeolokalizacja = async () => {
     setLoading(true);
-    setKomunikat('');
+    setKomunikat('📍 Sprawdzanie Twojej lokalizacji GPS...');
 
     try {
+      // 1. Sprawdzamy pozycję GPS
+      const userCoords = await pobierzLokalizacje();
+      const dystans = obliczDystansMetry(
+        userCoords.latitude,
+        userCoords.longitude,
+        SALA_LATITUDE,
+        SALA_LONGITUDE
+      );
+
+      // 2. Weryfikacja promienia 200 metrów
+      if (dystans > MAKSYMALNY_DYSTANS_METRY) {
+        setKomunikat(`❌ Jesteś za daleko od sali prób! (Twoja odległość: ${Math.round(dystans)} m). Musisz znajdować się w promieniu ${MAKSYMALNY_DYSTANS_METRY} metrów od sali.`);
+        setLoading(false);
+        return;
+      }
+
+      setKomunikat('✅ Lokalizacja potwierdzona! Weryfikacja próby w bazie...');
+
+      // 3. Sprawdzamy czy dzisiaj jest próba w bazie
       const dzis = new Date();
       const dzisString = dzis.toISOString().split('T')[0];
 
-      // 1. Sprawdzamy czy dzisiaj jest próba
       const { data: probyDzis, error: probaErr } = await supabase
         .from('proby')
         .select('*')
@@ -56,7 +116,7 @@ export default function SkanerQR({ profile }) {
         return;
       }
 
-      // 2. Zapisujemy obecność
+      // 4. Zapisujemy obecność
       const { error: upsertErr } = await supabase
         .from('deklaracje_obecnosci')
         .upsert([
@@ -70,41 +130,37 @@ export default function SkanerQR({ profile }) {
 
       if (upsertErr) throw upsertErr;
 
-      setKomunikat('✅ Sukces! Prawidłowo zeskanowano kod QR sali. Twoja obecność została zarejestrowana! 🔥');
+      setKomunikat('🎉 Sukces! Zeskanowano kod QR i potwierdzono obecność na sali! 🔥');
     } catch (err) {
-      console.error('Błąd rejestracji obecności QR:', err);
-      setKomunikat('❌ Wystąpił błąd podczas zapisywania obecności.');
+      console.error('Błąd geolokalizacji/obecności:', err);
+      setKomunikat(`❌ ${err.message || 'Wystąpił błąd podczas weryfikacji.'}`);
     } finally {
       setLoading(false);
     }
   };
 
-  // Obsługa uruchamiania i zatrzymywania skanera html5-qrcode
+  // Obsługa skanera html5-qrcode
   useEffect(() => {
     let html5QrCode = null;
 
     if (skanuje) {
       html5QrCode = new Html5Qrcode("reader-container");
-      
       const config = { fps: 10, qrbox: { width: 250, height: 250 } };
 
       html5QrCode.start(
         { facingMode: "environment" }, 
         config,
         (decodedText) => {
-          // Sukces skanowania kodu QR
           if (decodedText === TAJNY_TOKEN_SALI) {
             html5QrCode.stop().then(() => {
               setSkanuje(false);
-              oznaczObecnoscDzisiaj();
+              oznaczObecnoscZGeolokalizacja(); // Po udanym skanie sprawdzamy GPS i bazę
             }).catch(err => console.error("Błąd zatrzymania kamery:", err));
           } else {
             setKomunikat('⚠️ Zeskanowano nieprawidłowy kod QR! To nie jest oficjalny kod sali prób.');
           }
         },
-        (errorMessage) => {
-          // Błędy skanowania pojedynczych klatek (ignorujemy, bo skaner cały czas szuka kodu)
-        }
+        (errorMessage) => {}
       ).catch(err => {
         console.error("Nie udało się uruchomić aparatu:", err);
         setKomunikat('❌ Brak dostępu do kamery. Sprawdź uprawnienia w przeglądarce.');
@@ -125,7 +181,7 @@ export default function SkanerQR({ profile }) {
     <div style={{ marginTop: '20px', padding: '25px', border: '1px solid #e2e8f0', borderRadius: '12px', backgroundColor: '#ffffff', boxShadow: '0 4px 6px rgba(0,0,0,0.02)', textAlign: 'center' }}>
       <h2 style={{ color: '#1e293b', marginBottom: '10px', fontSize: '20px' }}>Szybka Obecność przez Kod QR 📱</h2>
       <p style={{ color: '#64748b', fontSize: '14px', marginBottom: '25px' }}>
-        Zeskanuj oficjalny kod QR sali prób, aby potwierdzić swoją obecność.
+        Zeskanuj oficjalny kod QR sali prób i udostępnij lokalizację GPS, aby potwierdzić obecność.
       </p>
 
       {/* WIDOK DLA KADRY */}
@@ -136,7 +192,7 @@ export default function SkanerQR({ profile }) {
             <QRCodeSVG value={TAJNY_TOKEN_SALI} size={200} level="H" />
           </div>
           <p style={{ fontSize: '12px', color: '#64748b', marginTop: '12px', maxWidth: '300px', marginInline: 'auto' }}>
-            Wyświetl ten kod na ekranie na sali prób. Tylko ten konkretny kod zostanie uznany przez system.
+            Wyświetl ten kod na sali. System wymaga też, aby członek znajdował się w promieniu 200m od sali.
           </p>
         </div>
       )}
@@ -149,7 +205,7 @@ export default function SkanerQR({ profile }) {
           {!skanuje ? (
             <>
               <p style={{ fontSize: '13px', color: '#4b5563', marginBottom: '20px' }}>
-                Kliknij poniżej, aby włączyć skaner i skierować aparat na kod QR znajdujący się na sali.
+                Kliknij poniżej, aby włączyć skaner. Telefon poprosi o dostęp do aparatu oraz lokalizacji GPS.
               </p>
               <button
                 onClick={() => { setKomunikat(''); setSkanuje(true); }}
@@ -166,12 +222,11 @@ export default function SkanerQR({ profile }) {
                   boxShadow: '0 4px 6px rgba(139, 92, 246, 0.2)'
                 }}
               >
-                📷 Włącz skaner QR
+                📷 Skanuj kod QR sali
               </button>
             </>
           ) : (
             <div>
-              {/* Kontener w którym biblioteka html5-qrcode wyświetli podgląd kamery */}
               <div id="reader-container" style={{ width: '100%', borderRadius: '8px', overflow: 'hidden', marginBottom: '15px' }}></div>
 
               <button
@@ -195,10 +250,10 @@ export default function SkanerQR({ profile }) {
         </div>
       )}
 
-      {loading && <p style={{ marginTop: '15px', color: '#64748b' }}>Weryfikacja kodu i zapisywanie obecności...</p>}
+      {loading && <p style={{ marginTop: '15px', color: '#64748b', fontWeight: '500' }}>{komunikat}</p>}
 
-      {komunikat && (
-        <div style={{ marginTop: '20px', padding: '12px', borderRadius: '8px', backgroundColor: komunikat.includes('✅') ? '#f0fdf4' : '#fef2f2', border: `1px solid ${komunikat.includes('✅') ? '#bbf7d0' : '#fecaca'}`, color: komunikat.includes('✅') ? '#15803d' : '#991b1b', fontWeight: '600', fontSize: '14px', display: 'inline-block' }}>
+      {komunikat && !loading && (
+        <div style={{ marginTop: '20px', padding: '12px', borderRadius: '8px', backgroundColor: komunikat.includes('✅') || komunikat.includes('🎉') ? '#f0fdf4' : '#fef2f2', border: `1px solid ${komunikat.includes('✅') || komunikat.includes('🎉') ? '#bbf7d0' : '#fecaca'}`, color: komunikat.includes('✅') || komunikat.includes('🎉') ? '#15803d' : '#991b1b', fontWeight: '600', fontSize: '14px', display: 'inline-block' }}>
           {komunikat}
         </div>
       )}
