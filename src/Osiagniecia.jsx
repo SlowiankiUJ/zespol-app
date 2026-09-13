@@ -18,16 +18,16 @@ export default function Osiagniecia({ profile }) {
 
   const obliczOsiagniecia = async () => {
     try {
-      // 1. Pobieramy koncerty, w których użytkownik brał udział
+      // 1. Pobieramy koncerty, w których użytkownik jest ZAKWALIFIKOWANY przez kierownika
       const { data: dekKoncerty } = await supabase
         .from('deklaracje_koncerty')
-        .select('id_koncertu, planuje, zakwalifikowany')
+        .select('id_koncertu, zakwalifikowany')
         .eq('id_uzytkownika', profile.id)
-        .eq('planuje', true);
+        .eq('zakwalifikowany', true);
 
       const liczbaKoncertow = dekKoncerty ? dekKoncerty.length : 0;
 
-      // 2. Pobieramy występy w obsadzie
+      // 2. Pobieramy występy w obsadzie układów
       const { data: obsadaData } = await supabase
         .from('koncert_obsada')
         .select('id')
@@ -35,10 +35,10 @@ export default function Osiagniecia({ profile }) {
 
       const liczbaWystepow = obsadaData ? obsadaData.length : 0;
 
-      // 3. Pobieramy deklaracje obecności do frekwencji miesięcznej oraz streaka
+      // 3. Pobieramy deklaracje obecności (poprawione zapytanie bez 'harmonogram_prob')
       const { data: obecnosciData } = await supabase
         .from('deklaracje_obecnosci')
-        .select('obecny, id_proby, harmonogram_prob(data_proba)')
+        .select('obecny, id_proby')
         .eq('id_uzytkownika', profile.id);
 
       const { data: probyList } = await supabase
@@ -49,11 +49,22 @@ export default function Osiagniecia({ profile }) {
       let aktualnyStreak = 0;
 
       if (obecnosciData && obecnosciData.length > 0 && probyList) {
+        const probaInfoMap = {};
+        probyList.forEach(p => {
+          if (p.id && p.data_czas) {
+            probaInfoMap[p.id] = {
+              data_czas: p.data_czas,
+              sekcja: p.sekcja
+            };
+          }
+        });
+
         // --- FREKWENCJA MIESIĘCZNA ---
         const miesiaceMap = {};
         obecnosciData.forEach(item => {
-          if (item.harmonogram_prob && item.harmonogram_prob.data_proba) {
-            const miesiacKey = item.harmonogram_prob.data_proba.substring(0, 7);
+          const info = probaInfoMap[item.id_proby];
+          if (info && info.data_czas) {
+            const miesiacKey = info.data_czas.substring(0, 7);
             if (!miesiaceMap[miesiacKey]) {
               miesiaceMap[miesiacKey] = { obecne: 0, łącznie: 0 };
             }
@@ -73,16 +84,6 @@ export default function Osiagniecia({ profile }) {
         }
 
         // --- STREAK PRÓB (Z pominięciem prób generalnych) ---
-        const probaInfoMap = {};
-        probyList.forEach(p => {
-          if (p.id && p.data_czas) {
-            probaInfoMap[p.id] = {
-              data_czas: p.data_czas,
-              sekcja: p.sekcja
-            };
-          }
-        });
-
         const wpisyZUstalonaData = obecnosciData
           .map(d => {
             const info = probaInfoMap[d.id_proby];
@@ -94,13 +95,14 @@ export default function Osiagniecia({ profile }) {
           })
           .filter(item => item.data_proba && item.sekcja !== 'generalna' && (item.obecny === true || item.obecny === false));
 
-        wpisyZUstalonaData.sort((a, b) => new Date(b.data_proba) - new Date(b.data_proba));
+        // Sortujemy od najnowszej do najstarszej próby
+        wpisyZUstalonaData.sort((a, b) => new Date(b.data_proba) - new Date(a.data_proba));
 
         for (const wpis of wpisyZUstalonaData) {
           if (wpis.obecny === true) {
             aktualnyStreak++;
           } else if (wpis.obecny === false) {
-            break;
+            break; // Przerwanie streaka przy pierwszej nieobecności
           }
         }
       }
@@ -207,7 +209,6 @@ export default function Osiagniecia({ profile }) {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '15px' }}>
         {odznaki.map((odznaka, index) => {
-          // Efekt szarości (grayscale) i przezroczystości dla zablokowanych odznak
           const stylIkony = {
             fontSize: '36px',
             filter: odznaka.zdobyte ? 'none' : 'grayscale(100%) brightness(150%)',
@@ -235,7 +236,6 @@ export default function Osiagniecia({ profile }) {
                   <span style={{ fontSize: '11px', fontWeight: 'bold', textTransform: 'uppercase', color: '#64748b', backgroundColor: '#e2e8f0', padding: '2px 8px', borderRadius: '4px' }}>
                     {odznaka.kategoria}
                   </span>
-                  {/* Wyświetlanie grafiki/ikony z dynamicznym filtrem szarości */}
                   <div style={{ padding: '6px', backgroundColor: odznaka.zdobyte ? '#d1fae5' : '#e2e8f0', borderRadius: '50%', width: '48px', height: '48px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
                     <span style={stylIkony}>{odznaka.ikona}</span>
                   </div>

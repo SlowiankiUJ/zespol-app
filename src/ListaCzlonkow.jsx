@@ -15,7 +15,6 @@ export default function ListaCzlonkow({ profile }) {
 
   const pobierzWszystkichCzlonkow = async () => {
     try {
-      // Pobieramy wyłącznie profile, które mają rolę 'członek'
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
@@ -38,10 +37,10 @@ export default function ListaCzlonkow({ profile }) {
     setLoading(true);
 
     try {
-      // 1. Obliczanie frekwencji i streaka
+      // 1. Obliczanie frekwencji i streaka (poprawiona relacja z tabelą 'proby')
       const { data: obecnosciData } = await supabase
         .from('deklaracje_obecnosci')
-        .select('obecny, id_proby, harmonogram_prob(data_proba)')
+        .select('obecny, id_proby, proby(data_czas)')
         .eq('id_uzytkownika', wybranaOsoba.id);
 
       const { data: probyList } = await supabase
@@ -67,7 +66,7 @@ export default function ListaCzlonkow({ profile }) {
             const info = probaInfoMap[d.id_proby];
             return {
               obecny: d.obecny,
-              data_proba: info ? info.data_czas : null,
+              data_proba: d.proby ? d.proby.data_czas : (info ? info.data_czas : null),
               sekcja: info ? info.sekcja : null
             };
           })

@@ -66,6 +66,7 @@ export default function MojaFrekwencja({ profile }) {
       .in('sekcja', sekcjeDoPobrania)
       .order('data_czas', { ascending: true });
 
+    // POPRAWKA: Usunięto błędne odwołanie do nieistniejącej tabeli 'harmonogram_prob'
     const { data: dekData } = await supabase
       .from('deklaracje_obecnosci')
       .select('id_proby, planuje, usprawiedliwienie, obecny')
