@@ -5,7 +5,7 @@ export default function ListaCzlonkow({ profile }) {
   const [czlonkowie, setCzlonkowie] = useState([]);
   const [loading, setLoading] = useState(true);
   const [wybranyCzłonek, setWybranyCzłonek] = useState(null);
-  const [statyCzlonka, setStatyCzlonka] = useState({ frekwencja: 0, odznaki: [] });
+  const [statyCzlonka, setStatyCzlonka] = useState({ frekwencja: 0, streak: 0, koncerty: 0, występy: 0, odznaki: [] });
 
   useEffect(() => {
     if (profile) {
@@ -15,10 +15,11 @@ export default function ListaCzlonkow({ profile }) {
 
   const pobierzWszystkichCzlonkow = async () => {
     try {
-      // Pobieramy wszystkich użytkowników z tabeli profiles
+      // Pobieramy wyłącznie profile, które mają rolę 'członek'
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
+        .eq('rola', 'członek')
         .order('imie_nazwisko', { ascending: true });
 
       if (error) throw error;
@@ -32,17 +33,16 @@ export default function ListaCzlonkow({ profile }) {
     }
   };
 
-  // Pobieranie szczegółowych statystyk (frekwencji i osiągnięć) dla wybranego członka po kliknięciu
-  const otwórzSzczegóły = async (członek) => {
-    setWybranyCzłonek(członek);
+  const otwórzSzczegóły = async (wybranaOsoba) => {
+    setWybranyCzłonek(wybranaOsoba);
     setLoading(true);
 
     try {
-      // 1. Obliczanie frekwencji
+      // 1. Obliczanie frekwencji i streaka
       const { data: obecnosciData } = await supabase
         .from('deklaracje_obecnosci')
         .select('obecny, id_proby, harmonogram_prob(data_proba)')
-        .eq('id_uzytkownika', członek.id);
+        .eq('id_uzytkownika', wybranaOsoba.id);
 
       const { data: probyList } = await supabase
         .from('proby')
@@ -73,13 +73,11 @@ export default function ListaCzlonkow({ profile }) {
           })
           .filter(item => item.data_proba && item.sekcja !== 'generalna' && (item.obecny === true || item.obecny === false));
 
-        // Liczenie frekwencji
         wpisyZUstalonaData.forEach(item => {
           if (item.obecny === true) { ob++; tot++; }
           else if (item.obecny === false) { tot++; }
         });
 
-        // Liczenie streaka
         wpisyZUstalonaData.sort((a, b) => new Date(b.data_proba) - new Date(a.data_proba));
         for (const wpis of wpisyZUstalonaData) {
           if (wpis.obecny === true) aktualnyStreak++;
@@ -93,17 +91,17 @@ export default function ListaCzlonkow({ profile }) {
       const { data: dekKoncerty } = await supabase
         .from('deklaracje_koncerty')
         .select('id')
-        .eq('id_uzytkownika', członek.id)
+        .eq('id_uzytkownika', wybranaOsoba.id)
         .eq('planuje', true);
       if (dekKoncerty) liczbaKoncertow = dekKoncerty.length;
 
       const { data: obsadaData } = await supabase
         .from('koncert_obsada')
         .select('id')
-        .eq('id_uzytkownika', członek.id);
+        .eq('id_uzytkownika', wybranaOsoba.id);
       if (obsadaData) liczbaWystepow = obsadaData.length;
 
-      // Generowanie osiągnięć (takich samych jak w module Osiągnięcia)
+      // Generowanie odznak
       const odznaki = [
         { tytuł: 'Rozgrzewka w tańcu (5 prób)', zdobyte: aktualnyStreak >= 5, ikona: '👟' },
         { tytuł: 'Żelazna kondycja (15 prób)', zdobyte: aktualnyStreak >= 15, ikona: '🪵' },
@@ -142,7 +140,7 @@ export default function ListaCzlonkow({ profile }) {
         Przeglądaj profile znajomych z zespołu, sprawdź ich sekcje, frekwencję oraz zdobyte osiągnięcia!
       </p>
 
-      {/* MODAL / SZCZEGÓŁY WYBRANEGO CZŁONKA */}
+      {/* SZCZEGÓŁY WYBRANEGO CZŁONKA */}
       {wybranyCzłonek && (
         <div style={{ marginBottom: '30px', padding: '20px', backgroundColor: '#f8fafc', borderRadius: '10px', border: '2px solid #8b5cf6', position: 'relative' }}>
           <button 
@@ -163,7 +161,7 @@ export default function ListaCzlonkow({ profile }) {
             <div>
               <h3 style={{ margin: '0 0 4px 0', fontSize: '18px', color: '#1e293b' }}>{wybranyCzłonek.imie_nazwisko}</h3>
               <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>
-                Rola: <strong style={{ textTransform: 'capitalize' }}>{wybranyCzłonek.rola}</strong> | Sekcja główna: <strong style={{ textTransform: 'uppercase', color: '#3182ce' }}>{wybranyCzłonek.sekcja}</strong>
+                Sekcja główna: <strong style={{ textTransform: 'uppercase', color: '#3182ce' }}>{wybranyCzłonek.sekcja}</strong>
                 {wybranyCzłonek.glos && ` (${wybranyCzłonek.glos})`}
               </p>
             </div>
@@ -208,7 +206,7 @@ export default function ListaCzlonkow({ profile }) {
         {czlonkowie.map((czlonek) => (
           <div 
             key={czlonek.id} 
-            onClick={() => otwórzSzczegóły(członek)}
+            onClick={() => otwórzSzczegóły(czlonek)}
             style={{ 
               padding: '16px', 
               borderRadius: '8px', 
