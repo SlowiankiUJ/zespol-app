@@ -12,6 +12,7 @@ import OneSignal from 'react-onesignal';
 import Aktualnosci from './Aktualnosci';
 import Osiagniecia from './Osiagniecia';
 import SkanerQR from './SkanerQR';
+import ListaCzlonkow from './ListaCzlonkow';
 
 export default function App() {
   const [session, setSession] = useState(null);
@@ -235,6 +236,7 @@ export default function App() {
             <button onClick={() => setAktywnaZakladka('skaner_qr')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'skaner_qr' ? '#8b5cf6' : '#f8fafc', color: aktywnaZakladka === 'skaner_qr' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>📷 Skaner QR</button>
             <button onClick={() => setAktywnaZakladka('aktualnosci')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'aktualnosci' ? '#8b5cf6' : '#f8fafc', color: aktywnaZakladka === 'aktualnosci' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>📢 Aktualności</button>
             <button onClick={() => setAktywnaZakladka('sprawdz_obecnosc')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'sprawdz_obecnosc' ? '#8b5cf6' : '#f8fafc', color: aktywnaZakladka === 'sprawdz_obecnosc' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>📋 Sprawdź obecność</button>
+            <button onClick={() => setAktywnaZakladka('czlonkowie_lista')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'czlonkowie_lista' ? '#8b5cf6' : '#f8fafc', color: aktywnaZakladka === 'czlonkowie_lista' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>👥 Członkowie</button>
             <button onClick={() => setAktywnaZakladka('koncerty')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'koncerty' ? '#8b5cf6' : '#f8fafc', color: aktywnaZakladka === 'koncerty' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>🎻 Koncerty</button>
             <button onClick={() => setAktywnaZakladka('moje_statystyki')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'moje_statystyki' ? '#8b5cf6' : '#f8fafc', color: aktywnaZakladka === 'moje_statystyki' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>📊 Moja frekwencja</button>
             <button onClick={() => setAktywnaZakladka('profil')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'profil' ? '#8b5cf6' : '#f8fafc', color: aktywnaZakladka === 'profil' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>⚙️ Mój profil</button>
@@ -269,6 +271,7 @@ export default function App() {
         {aktywnaZakladka === 'skaner_qr' && <SkanerQR profile={profile} />}
         {aktywnaZakladka === 'aktualnosci' && <Aktualnosci profile={profile} />}
         {aktywnaZakladka === 'czlonkowie' && profile?.rola === 'kierownik' && <ZarzadzanieCzlonkami />}
+        {aktywnaZakladka === 'czlonkowie_lista' && profile?.rola === 'członek' && <ListaCzlonkow profile={profile} />}
         {aktywnaZakladka === 'sprawdz_obecnosc' && profile?.rola === 'członek' && <PodgladObecnosciCzlonka profile={profile} />}
         {aktywnaZakladka === 'koncerty' && <Koncerty profile={profile} />}
         {aktywnaZakladka === 'moje_statystyki' && profile?.rola === 'członek' && <MojaFrekwencja profile={profile} />}
