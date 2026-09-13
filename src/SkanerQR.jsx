@@ -1,18 +1,17 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import { QRCodeSVG } from 'qrcode.react';
+import { Html5Qrcode } from 'html5-qrcode';
 
 export default function SkanerQR({ profile }) {
   const [komunikat, setKomunikat] = useState('');
   const [loading, setLoading] = useState(false);
   const [skanuje, setSkanuje] = useState(false);
-  const [odczytanyKod, setOdczytanyKod] = useState('');
-  
-  const videoRef = useRef(null);
-  const mediaStreamRef = useRef(null);
 
   // TAJNY, UNIKALNY PODPIS KODU QR (musi być identyczny w wygenerowanym QR i w skanerze)
   const TAJNY_TOKEN_SALI = 'ZPIT_UJ_SLOWIANKI_OFICJALNY_KOD_SALI_PROB';
+
+  const stałyLinkQR = window.location.origin + '?akcja=obecnosc_qr';
 
   // Funkcja zapisująca obecność w bazie po poprawnym odczycie kodu QR
   const oznaczObecnoscDzisiaj = async () => {
@@ -35,7 +34,6 @@ export default function SkanerQR({ profile }) {
       if (!probyDzis || probyDzis.length === 0) {
         setKomunikat('❌ Dzisiaj nie ma zaplanowanej żadnej próby w harmonogramie!');
         setLoading(false);
-        setOdczytanyKod('');
         return;
       }
 
@@ -55,7 +53,6 @@ export default function SkanerQR({ profile }) {
       if (!dzisiejszaProba) {
         setKomunikat('⚠️ Dzisiaj odbywa się próba, ale nie dotyczy ona Twojej sekcji.');
         setLoading(false);
-        setOdczytanyKod('');
         return;
       }
 
@@ -74,7 +71,6 @@ export default function SkanerQR({ profile }) {
       if (upsertErr) throw upsertErr;
 
       setKomunikat('✅ Sukces! Prawidłowo zeskanowano kod QR sali. Twoja obecność została zarejestrowana! 🔥');
-      setOdczytanyKod('');
     } catch (err) {
       console.error('Błąd rejestracji obecności QR:', err);
       setKomunikat('❌ Wystąpił błąd podczas zapisywania obecności.');
@@ -83,77 +79,45 @@ export default function SkanerQR({ profile }) {
     }
   };
 
-  // Uruchamianie kamery
-  const wlaczKamere = async () => {
-    setKomunikat('');
-    setOdczytanyKod('');
-    setSkanuje(true);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'environment' } 
-      });
-      mediaStreamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play();
-      }
-    } catch (err) {
-      console.error("Błąd dostępu do kamery:", err);
-      setKomunikat('❌ Brak dostępu do kamery. Sprawdź uprawnienia w przeglądarce.');
-      setSkanuje(false);
-    }
-  };
-
-  // Zatrzymywanie kamery
-  const zatrzymajKamere = () => {
-    if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach(track => track.stop());
-      mediaStreamRef.current = null;
-    }
-    setSkanuje(false);
-  };
-
-  // Skanowanie klatek wideo przez BarcodeDetector
+  // Obsługa uruchamiania i zatrzymywania skanera html5-qrcode
   useEffect(() => {
-    let interval = null;
-    if (skanuje && 'BarcodeDetector' in window) {
-      const barcodeDetector = new window.BarcodeDetector({ formats: ['qr_code'] });
+    let html5QrCode = null;
+
+    if (skanuje) {
+      html5QrCode = new Html5Qrcode("reader-container");
       
-      interval = setInterval(async () => {
-        if (videoRef.current && videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA) {
-          try {
-            const codes = await barcodeDetector.detect(videoRef.current);
-            if (codes.length > 0) {
-              const zawartoscKodu = codes[0].rawValue;
-              
-              // WERYFIKACJA: Sprawdzamy czy odczytany kod QR zawiera dokładnie nasz tajny token sali!
-              if (zawartoscKodu === TAJNY_TOKEN_SALI) {
-                clearInterval(interval);
-                zatrzymajKamere();
-                setOdczytanyKod(zawartoscKodu);
-                oznaczObecnoscDzisiaj();
-              } else {
-                // Jeśli to jakikolwiek inny kod QR (np. z butelki wody), informujemy użytkownika
-                setKomunikat('⚠️ Zeskanowano nieprawidłowy kod QR! Podejdź do oficjalnego kodu sali prób.');
-              }
-            }
-          } catch (e) {
-            // Ignorujemy błędy pojedynczych klatek
+      const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+
+      html5QrCode.start(
+        { facingMode: "environment" }, 
+        config,
+        (decodedText) => {
+          // Sukces skanowania kodu QR
+          if (decodedText === TAJNY_TOKEN_SALI) {
+            html5QrCode.stop().then(() => {
+              setSkanuje(false);
+              oznaczObecnoscDzisiaj();
+            }).catch(err => console.error("Błąd zatrzymania kamery:", err));
+          } else {
+            setKomunikat('⚠️ Zeskanowano nieprawidłowy kod QR! To nie jest oficjalny kod sali prób.');
           }
+        },
+        (errorMessage) => {
+          // Błędy skanowania pojedynczych klatek (ignorujemy, bo skaner cały czas szuka kodu)
         }
-      }, 400);
+      ).catch(err => {
+        console.error("Nie udało się uruchomić aparatu:", err);
+        setKomunikat('❌ Brak dostępu do kamery. Sprawdź uprawnienia w przeglądarce.');
+        setSkanuje(false);
+      });
     }
 
     return () => {
-      if (interval) clearInterval(interval);
+      if (html5QrCode && html5QrCode.isScanning) {
+        html5QrCode.stop().catch(err => console.error("Błąd czyszczenia skanera:", err));
+      }
     };
   }, [skanuje]);
-
-  useEffect(() => {
-    return () => {
-      zatrzymajKamere();
-    };
-  }, []);
 
   const isKadra = profile.rola === 'kierownik' || profile.rola === 'pracownik';
 
@@ -164,7 +128,7 @@ export default function SkanerQR({ profile }) {
         Zeskanuj oficjalny kod QR sali prób, aby potwierdzić swoją obecność.
       </p>
 
-      {/* WIDOK DLA KADRY (Generuje kod QR zawierający tajny token) */}
+      {/* WIDOK DLA KADRY */}
       {isKadra && (
         <div style={{ marginBottom: '30px', padding: '20px', backgroundColor: '#f8fafc', borderRadius: '10px', border: '1px solid #cbd5e1', display: 'inline-block' }}>
           <p style={{ fontWeight: 'bold', color: '#1e293b', marginBottom: '15px' }}>📌 Oficjalny kod QR Sali Prób (dla zespołu):</p>
@@ -185,10 +149,10 @@ export default function SkanerQR({ profile }) {
           {!skanuje ? (
             <>
               <p style={{ fontSize: '13px', color: '#4b5563', marginBottom: '20px' }}>
-                Kliknij poniżej, aby włączyć aparat i skierować go na kod QR znajdujący się na sali.
+                Kliknij poniżej, aby włączyć skaner i skierować aparat na kod QR znajdujący się na sali.
               </p>
               <button
-                onClick={wlaczKamere}
+                onClick={() => { setKomunikat(''); setSkanuje(true); }}
                 style={{
                   width: '100%',
                   padding: '14px',
@@ -202,30 +166,19 @@ export default function SkanerQR({ profile }) {
                   boxShadow: '0 4px 6px rgba(139, 92, 246, 0.2)'
                 }}
               >
-                📷 Włącz aparat i skanuj kod sali
+                📷 Włącz skaner QR
               </button>
             </>
           ) : (
             <div>
-              <div style={{ position: 'relative', width: '100%', backgroundColor: '#000', borderRadius: '8px', overflow: 'hidden', marginBottom: '15px' }}>
-                <video 
-                  ref={videoRef} 
-                  playsInline 
-                  muted 
-                  style={{ width: '100%', height: '260px', objectFit: 'cover' }}
-                />
-                <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50px)', width: '180px', height: '100px', border: '2px dashed #8b5cf6', borderRadius: '8px', pointerEvents: 'none' }}></div>
-              </div>
-
-              <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '12px' }}>
-                Trzymaj aparat stabilnie i nakieruj go na oficjalny kod QR wywieszony na sali...
-              </p>
+              {/* Kontener w którym biblioteka html5-qrcode wyświetli podgląd kamery */}
+              <div id="reader-container" style={{ width: '100%', borderRadius: '8px', overflow: 'hidden', marginBottom: '15px' }}></div>
 
               <button
-                onClick={zatrzymajKamere}
+                onClick={() => setSkanuje(false)}
                 style={{
                   width: '100%',
-                  padding: '8px',
+                  padding: '10px',
                   backgroundColor: '#ef4444',
                   color: '#fff',
                   border: 'none',
@@ -235,7 +188,7 @@ export default function SkanerQR({ profile }) {
                   cursor: 'pointer'
                 }}
               >
-                Anuluj ❌
+                Anuluj skanowanie ❌
               </button>
             </div>
           )}
