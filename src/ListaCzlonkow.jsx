@@ -37,7 +37,7 @@ export default function ListaCzlonkow({ profile }) {
     setLoading(true);
 
     try {
-      // 1. Obliczanie frekwencji i streaka (poprawiona relacja z tabelą 'proby')
+      // 1. Obliczanie frekwencji i streaka
       const { data: obecnosciData } = await supabase
         .from('deklaracje_obecnosci')
         .select('obecny, id_proby, proby(data_czas)')
@@ -86,14 +86,18 @@ export default function ListaCzlonkow({ profile }) {
 
       const procentFrekwencji = tot > 0 ? Math.round((ob / tot) * 100) : 0;
 
-      // 2. Pobieranie koncertów i występów
+      // 2. Pobieranie koncertów - TYLKO ze statusem zakwalifikowany === true
       const { data: dekKoncerty } = await supabase
         .from('deklaracje_koncerty')
-        .select('id')
+        .select('id_koncertu, zakwalifikowany')
         .eq('id_uzytkownika', wybranaOsoba.id)
-        .eq('planuje', true);
-      if (dekKoncerty) liczbaKoncertow = dekKoncerty.length;
+        .eq('zakwalifikowany', true);
 
+      if (dekKoncerty) {
+        liczbaKoncertow = dekKoncerty.length;
+      }
+
+      // 3. Pobieranie występów w obsadzie układów
       const { data: obsadaData } = await supabase
         .from('koncert_obsada')
         .select('id')
