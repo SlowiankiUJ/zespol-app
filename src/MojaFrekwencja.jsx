@@ -8,10 +8,17 @@ const formatujWyswietlanie = (isoStr) => {
   return d.toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ', ' + d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
 };
 
+// Polskie nazwy miesięcy do grupowania
+const nazwyMiesiecy = [
+  'Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec', 
+  'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień'
+];
+
 export default function MojaFrekwencja({ profile }) {
   const [proby, setProby] = useState([]);
   const [mojeObecnosci, setMojeObecnosci] = useState({});
   const [statystyki, setStatystyki] = useState({ obecny: 0, nieobecny: 0, total: 0 });
+  const [rozwinieteMiesiace, setRozwinieteMiesiace] = useState({});
 
   useEffect(() => {
     if (profile) {
@@ -48,16 +55,16 @@ export default function MojaFrekwencja({ profile }) {
       });
     }
 
-    // Pobieramy próby dla sekcji użytkownika oraz próby generalne (żeby widział je w liście, ale bez wpływu na statystyki)
     if (!sekcjeDoPobrania.includes('generalna')) {
       sekcjeDoPobrania.push('generalna');
     }
 
+    // Pobieramy próby rosnąco (chronologicznie: od najstarszych do najnowszych)
     const { data: probyData } = await supabase
       .from('proby')
       .select('*')
       .in('sekcja', sekcjeDoPobrania)
-      .order('data_czas', { ascending: false });
+      .order('data_czas', { ascending: true });
 
     const { data: dekData } = await supabase
       .from('deklaracje_obecnosci')
@@ -71,7 +78,6 @@ export default function MojaFrekwencja({ profile }) {
       });
     }
 
-    // Tworzymy mapę prób po ID do szybkiego sprawdzenia sekcji
     const probyMap = {};
     (probyData || []).forEach(p => {
       probyMap[p.id] = p;
@@ -84,7 +90,6 @@ export default function MojaFrekwencja({ profile }) {
     if (dekData) {
       dekData.forEach(d => {
         const proba = probyMap[d.id_proby];
-        // LICZYMY FREKWENCJĘ TYLKO Z PRÓB SEKCYJNYCH (Odrzucamy próbę generalną)
         if (proba && proba.sekcja !== 'generalna') {
           if (d.obecny === true) {
             ob++;
@@ -105,6 +110,31 @@ export default function MojaFrekwencja({ profile }) {
   const procentFrekwencji = statystyki.total > 0 
     ? Math.round((statystyki.obecny / statystyki.total) * 100) 
     : 0;
+
+  // Grupowanie prób według miesięcy (klucz: "YYYY-MM")
+  const aktualnaData = new Date();
+  const aktualnyKluczMiesiaca = `${aktualnaData.getFullYear()}-${String(aktualnaData.getMonth()).padStart(2, '0')}`;
+
+  const pogrupowaneProby = proby.reduce((akregator, proba) => {
+    const data = new Date(proba.data_czas);
+    const rok = data.getFullYear();
+    const miesiacIdx = data.getMonth();
+    const klucz = `${rok}-${String(miesiacIdx).padStart(2, '0')}`;
+    const nazwaMiesiaca = `${nazwyMiesiecy[miesiacIdx]} ${rok}`;
+
+    if (!akregator[klucz]) {
+      akregator[klucz] = { nazwa: nazwaMiesiaca, proby: [] };
+    }
+    akregator[klucz].proby.push(proba);
+    return akregator;
+  }, {});
+
+  const przelaczZakladkeMiesiaca = (klucz) => {
+    setRozwinieteMiesiace(prev => {
+      const isCurrentlyOpen = prev[klucz] ?? (klucz === aktualnyKluczMiesiaca);
+      return { ...prev, [klucz]: !isCurrentlyOpen };
+    });
+  };
 
   return (
     <div style={{ marginTop: '20px', padding: '25px', border: '1px solid #e2e8f0', borderRadius: '12px', backgroundColor: '#ffffff', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
@@ -130,64 +160,83 @@ export default function MojaFrekwencja({ profile }) {
 
       <h3 style={{ margin: '0 0 15px 0', fontSize: '16px', color: '#334155' }}>Rozliczenie poszczególnych prób ({proby.length}):</h3>
 
-      {proby.length === 0 ? (
+      {Object.keys(pogrupowaneProby).length === 0 ? (
         <p style={{ color: '#718096' }}>Nie masz przypisanych żadnych prób.</p>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-          {proby.map(proba => {
-            const stylSekcji = pobierzStylSekcji(proba.sekcja);
-            const mojeDane = mojeObecnosci[proba.id] || {};
-            const { planuje, usprawiedliwienie, obecny } = mojeDane;
-            const czyMinela = new Date(proba.data_czas) < new Date();
+          {Object.keys(pogrupowaneProby).sort().map(kluczMiesiaca => {
+            const grupa = pogrupowaneProby[kluczMiesiaca];
+            const isRozwiniety = rozwinieteMiesiace[kluczMiesiaca] ?? (kluczMiesiaca === aktualnyKluczMiesiaca);
 
             return (
-              <div key={proba.id} style={{ 
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px',
-                borderLeft: `6px solid ${stylSekcji.glowny}`, padding: '15px', backgroundColor: stylSekcji.jasny, 
-                borderRadius: '8px', borderTop: `1px solid ${stylSekcji.border}`, borderRight: `1px solid ${stylSekcji.border}`, borderBottom: `1px solid ${stylSekcji.border}`
-              }}>
-                
-                <div style={{ flex: '1 1 300px' }}>
-                  <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: 'bold', backgroundColor: stylSekcji.glowny, color: 'white', marginBottom: '6px', textTransform: 'uppercase' }}>
-                    {proba.sekcja === 'generalna' ? '🎭 Próba generalna' : proba.sekcja}
-                  </span>
-                  <h4 style={{ margin: '0 0 4px 0', color: '#1e293b', fontSize: '15px' }}>
-                    📅 {formatujWyswietlanie(proba.data_czas)}
-                  </h4>
-                  <p style={{ margin: 0, fontSize: '13px', color: '#475569' }}>
-                    <strong>Program:</strong> {proba.opis_cwiczen}
-                  </p>
-                </div>
+              <div key={kluczMiesiaca} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#f8fafc' }}>
+                <button 
+                  onClick={() => przelaczZakladkeMiesiaca(kluczMiesiaca)}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '15px 20px', backgroundColor: '#f1f5f9', border: 'none', borderBottom: isRozwiniety ? '1px solid #e2e8f0' : 'none', textAlign: 'left', fontWeight: 'bold', fontSize: '16px', color: '#1e293b', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                >
+                  <span>📅 {grupa.nazwa} <span style={{ color: '#64748b', fontSize: '14px', fontWeight: 'normal' }}>({grupa.proby.length} prób)</span></span>
+                  <span style={{ fontSize: '12px', color: '#64748b' }}>{isRozwiniety ? '▲ Zwiń' : '▼ Rozwiń'}</span>
+                </button>
 
-                <div style={{ flex: '1 1 200px', display: 'flex', flexDirection: 'column', gap: '8px', borderLeft: '1px dashed #cbd5e1', paddingLeft: '15px' }}>
-                  <div>
-                    <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 'bold', display: 'block', marginBottom: '2px' }}>Weryfikacja kadry:</span>
-                    {obecny === true ? (
-                      <span style={{ display: 'inline-block', padding: '4px 10px', backgroundColor: '#10b981', color: 'white', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold' }}>✅ Jesteś sprawdzony jako OBECNY</span>
-                    ) : obecny === false ? (
-                      <span style={{ display: 'inline-block', padding: '4px 10px', backgroundColor: '#ef4444', color: 'white', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold' }}>❌ Jesteś sprawdzony jako NIEOBECNY</span>
-                    ) : (
-                      <span style={{ display: 'inline-block', padding: '4px 10px', backgroundColor: '#e2e8f0', color: '#475569', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold' }}>
-                        {czyMinela ? '⏳ Oczekuje na sprawdzenie...' : '⏰ Próba w przyszłości'}
-                      </span>
-                    )}
+                {isRozwiniety && (
+                  <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '15px', backgroundColor: '#ffffff' }}>
+                    {grupa.proby.map(proba => {
+                      const stylSekcji = pobierzStylSekcji(proba.sekcja);
+                      const mojeDane = mojeObecnosci[proba.id] || {};
+                      const { planuje, usprawiedliwienie, obecny } = mojeDane;
+                      const czyMinela = new Date(proba.data_czas) < new Date();
+
+                      return (
+                        <div key={proba.id} style={{ 
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px',
+                          borderLeft: `6px solid ${stylSekcji.glowny}`, padding: '15px', backgroundColor: stylSekcji.jasny, 
+                          borderRadius: '8px', borderTop: `1px solid ${stylSekcji.border}`, borderRight: `1px solid ${stylSekcji.border}`, borderBottom: `1px solid ${stylSekcji.border}`
+                        }}>
+                          <div style={{ flex: '1 1 300px' }}>
+                            <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: 'bold', backgroundColor: stylSekcji.glowny, color: 'white', marginBottom: '6px', textTransform: 'uppercase' }}>
+                              {proba.sekcja === 'generalna' ? '🎭 Próba generalna' : proba.sekcja}
+                            </span>
+                            <h4 style={{ margin: '0 0 4px 0', color: '#1e293b', fontSize: '15px' }}>
+                              📅 {formatujWyswietlanie(proba.data_czas)}
+                            </h4>
+                            <p style={{ margin: 0, fontSize: '13px', color: '#475569' }}>
+                              <strong>Program:</strong> {proba.opis_cwiczen}
+                            </p>
+                          </div>
+
+                          <div style={{ flex: '1 1 200px', display: 'flex', flexDirection: 'column', gap: '8px', borderLeft: '1px dashed #cbd5e1', paddingLeft: '15px' }}>
+                            <div>
+                              <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 'bold', display: 'block', marginBottom: '2px' }}>Weryfikacja kadry:</span>
+                              {obecny === true ? (
+                                <span style={{ display: 'inline-block', padding: '4px 10px', backgroundColor: '#10b981', color: 'white', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold' }}>✅ Jesteś sprawdzony jako OBECNY</span>
+                              ) : obecny === false ? (
+                                <span style={{ display: 'inline-block', padding: '4px 10px', backgroundColor: '#ef4444', color: 'white', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold' }}>❌ Jesteś sprawdzony jako NIEOBECNY</span>
+                              ) : (
+                                <span style={{ display: 'inline-block', padding: '4px 10px', backgroundColor: '#e2e8f0', color: '#475569', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold' }}>
+                                  {czyMinela ? '⏳ Oczekuje na sprawdzenie...' : '⏰ Próba w przyszłości'}
+                                </span>
+                              )}
+                            </div>
+
+                            <div>
+                              <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 'bold', display: 'block', marginBottom: '2px' }}>Twoja deklaracja:</span>
+                              {planuje === true ? (
+                                <span style={{ fontSize: '12px', color: '#10b981', fontWeight: '600' }}>👍 Zadeklarowałeś obecność</span>
+                              ) : planuje === false ? (
+                                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                  <span style={{ fontSize: '12px', color: '#ef4444', fontWeight: '600' }}>👎 Zgłosiłeś nieobecność</span>
+                                  {usprawiedliwienie && <span style={{ fontSize: '11px', color: '#7f1d1d', fontStyle: 'italic' }}>Powód: "{usprawiedliwienie}"</span>}
+                                </div>
+                              ) : (
+                                <span style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic' }}>⚪ Brak deklaracji</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-
-                  <div>
-                    <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 'bold', display: 'block', marginBottom: '2px' }}>Twoja deklaracja:</span>
-                    {planuje === true ? (
-                      <span style={{ fontSize: '12px', color: '#10b981', fontWeight: '600' }}>👍 Zadeklarowałeś obecność</span>
-                    ) : planuje === false ? (
-                      <div style={{ display: 'flex', flexDirection: 'column' }}>
-                        <span style={{ fontSize: '12px', color: '#ef4444', fontWeight: '600' }}>👎 Zgłosiłeś nieobecność</span>
-                        {usprawiedliwienie && <span style={{ fontSize: '11px', color: '#7f1d1d', fontStyle: 'italic' }}>Powód: "{usprawiedliwienie}"</span>}
-                      </div>
-                    ) : (
-                      <span style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic' }}>⚪ Brak deklaracji</span>
-                    )}
-                  </div>
-                </div>
-
+                )}
               </div>
             );
           })}
