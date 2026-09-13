@@ -1,16 +1,18 @@
-import { useState, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import { QRCodeSVG } from 'qrcode.react';
-import { Html5QrcodeScanner } from 'html5-qrcode';
 
 export default function SkanerQR({ profile }) {
   const [komunikat, setKomunikat] = useState('');
   const [loading, setLoading] = useState(false);
   const [skanuje, setSkanuje] = useState(false);
+  
+  const videoRef = useRef(null);
+  const mediaStreamRef = useRef(null);
 
   const stałyLinkQR = window.location.origin + '?akcja=obecnosc_qr';
 
-  // Funkcja zapisująca obecność w bazie po poprawnym zeskanowaniu
+  // Funkcja zapisująca obecność w bazie po zeskanowaniu
   const oznaczObecnoscDzisiaj = async () => {
     setLoading(true);
     setKomunikat('');
@@ -65,7 +67,7 @@ export default function SkanerQR({ profile }) {
 
       if (upsertErr) throw upsertErr;
 
-      setKomunikat('✅ Sukces! Zeskanowano kod QR. Twoja obecność została zarejestrowana! 🔥');
+      setKomunikat('✅ Sukces! Kod QR został pomyślnie zeskanowany. Twoja obecność została zarejestrowana! 🔥');
     } catch (err) {
       console.error('Błąd rejestracji obecności QR:', err);
       setKomunikat('❌ Wystąpił błąd podczas zapisywania obecności.');
@@ -74,32 +76,69 @@ export default function SkanerQR({ profile }) {
     }
   };
 
-  // Uruchamianie skanera aparatu
+  // Uruchamianie kamery w telefonie/przeglądarce
+  const wlaczKameru = async () => {
+    setKomunikat('');
+    setSkanuje(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: 'environment' } // Używa tylnej kamery w telefonie
+      });
+      mediaStreamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play();
+      }
+    } catch (err) {
+      console.error("Błąd dostępu do kamery:", err);
+      setKomunikat('❌ Brak dostępu do kamery lub urządzenie jej nie obsługuje. Sprawdź uprawnienia przeglądarki.');
+      setSkanuje(false);
+    }
+  };
+
+  // Zatrzymywanie kamery
+  const zatrzymajKamere = () => {
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach(track => track.stop());
+      mediaStreamRef.current = null;
+    }
+    setSkanuje(false);
+  };
+
+  // Automatyczne skanowanie klatek wideo za pomocą BarcodeDetector (jeśli wspierany) lub przycisku potwierdzenia
   useEffect(() => {
-    let scanner = null;
-    if (skanuje) {
-      scanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: 250 }, false);
+    let interval = null;
+    if (skanuje && 'BarcodeDetector' in window) {
+      const barcodeDetector = new window.BarcodeDetector({ formats: ['qr_code'] });
       
-      scanner.render(
-        (decodedText) => {
-          // Sukces odczytu kodu QR
-          scanner.clear();
-          setSkanuje(false);
-          // Możesz opcjonalnie sprawdzić, czy decodedText zawiera odpowiedni link/identyfikator
-          oznaczObecnoscDzisiaj();
-        },
-        (error) => {
-          // Błędy skanowania klatek (ignorujemy, bo kamera cały czas szuka kodu)
+      interval = setInterval(async () => {
+        if (videoRef.current && videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA) {
+          try {
+            const codes = await barcodeDetector.detect(videoRef.current);
+            if (codes.length > 0) {
+              // Zeskanowano kod! Zatrzymujemy kamerę i zapisujemy obecność
+              clearInterval(interval);
+              zatrzymajKamere();
+              oznaczObecnoscDzisiaj();
+            }
+          } catch (e) {
+            // Ignorujemy błędy detekcji w pojedynczych klatkach
+          }
         }
-      );
+      }, 500);
     }
 
     return () => {
-      if (scanner) {
-        scanner.clear().catch(err => console.error("Błąd czyszczenia skanera", err));
-      }
+      if (interval) clearInterval(interval);
     };
   }, [skanuje]);
+
+  // Czyszczenie przy wyjściu z komponentu
+  useEffect(() => {
+    return () => {
+      zatrzymajKamere();
+    };
+  }, []);
 
   const isKadra = profile.rola === 'kierownik' || profile.rola === 'pracownik';
 
@@ -118,7 +157,7 @@ export default function SkanerQR({ profile }) {
             <QRCodeSVG value={stałyLinkQR} size={200} level="H" />
           </div>
           <p style={{ fontSize: '12px', color: '#64748b', marginTop: '12px', maxWidth: '300px', marginInline: 'auto' }}>
-            Wyświetl ten kod na ekranie na sali prób. Członkowie zespołu zeskanują go swoimi telefonami.
+            Wyświetl ten kod na ekranie lub wydrukuj na sali prób.
           </p>
         </div>
       )}
@@ -131,10 +170,10 @@ export default function SkanerQR({ profile }) {
           {!skanuje ? (
             <>
               <p style={{ fontSize: '13px', color: '#4b5563', marginBottom: '20px' }}>
-                Kliknij poniżej, aby włączyć aparat i zeskanować kod QR znajdujący się na sali.
+                Kliknij poniżej, aby uruchomić aparat i zeskanować kod QR na sali.
               </p>
               <button
-                onClick={() => setSkanuje(true)}
+                onClick={wlaczKameru}
                 style={{
                   width: '100%',
                   padding: '14px',
@@ -148,34 +187,70 @@ export default function SkanerQR({ profile }) {
                   boxShadow: '0 4px 6px rgba(139, 92, 246, 0.2)'
                 }}
               >
-                📷 Włącz aparat i skanuj QR
+                📷 Włącz aparat do skanowania
               </button>
             </>
           ) : (
             <div>
-              {/* Tutaj biblioteka wstrzyknie okno widoku kamery */}
-              <div id="reader" style={{ width: '100%', marginBottom: '15px' }}></div>
-              <button
-                onClick={() => setSkanuje(false)}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: '#ef4444',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '6px',
-                  fontSize: '13px',
-                  fontWeight: 'bold',
-                  cursor: 'pointer'
-                }}
-              >
-                Anuluj skanowanie ❌
-              </button>
+              {/* Podgląd z kamery wideo */}
+              <div style={{ position: 'relative', width: '100%', backgroundColor: '#000', borderRadius: '8px', overflow: 'hidden', marginBottom: '15px' }}>
+                <video 
+                  ref={videoRef} 
+                  playsInline 
+                  muted 
+                  style={{ width: '100%', height: '260px', objectFit: 'cover' }}
+                />
+                <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50px)', width: '180px', height: '100px', border: '2px dashed #8b5cf6', borderRadius: '8px', pointerEvents: 'none' }}></div>
+              </div>
+
+              <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '12px' }}>
+                Nakieruj aparat na kod QR znajdujący się na sali... (Jeśli przeglądarce zajmie to chwilę lub nie wykryje automatycznie, możesz użyć przycisku poniżej:)
+              </p>
+
+              <div style={{ display: 'flex', gap: '10px', flexDirection: 'column' }}>
+                <button
+                  onClick={() => {
+                    zatrzymajKamere();
+                    oznaczObecnoscDzisiaj();
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    backgroundColor: '#10b981',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    fontSize: '13px',
+                    fontWeight: 'bold',
+                    cursor: 'pointer'
+                  }}
+                >
+                  ✨ Potwierdź obecność ręcznie (po zeskanowaniu)
+                </button>
+
+                <button
+                  onClick={zatrzymajKamere}
+                  style={{
+                    width: '100%',
+                    padding: '8px',
+                    backgroundColor: '#ef4444',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    fontSize: '13px',
+                    fontWeight: 'bold',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Anuluj ❌
+                </button>
+              </div>
             </div>
           )}
         </div>
       )}
 
-      {loading && <p style={{ marginTop: '15px', color: '#64748b' }}>Przetwarzanie obecności...</p>}
+      {loading && <p style={{ marginTop: '15px', color: '#64748b' }}>Sprawdzanie próby i zapisywanie obecności...</p>}
 
       {komunikat && (
         <div style={{ marginTop: '20px', padding: '12px', borderRadius: '8px', backgroundColor: komunikat.includes('✅') ? '#f0fdf4' : '#fef2f2', border: `1px solid ${komunikat.includes('✅') ? '#bbf7d0' : '#fecaca'}`, color: komunikat.includes('✅') ? '#15803d' : '#991b1b', fontWeight: '600', fontSize: '14px', display: 'inline-block' }}>
