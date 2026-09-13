@@ -7,10 +7,9 @@ export default function SkanerQR({ profile }) {
   const [loading, setLoading] = useState(false);
 
   // Stały link identyfikujący system obecności zespołu
-  // Możesz tu wpisać adres swojej aplikacji, np. https://twoja-apka.vercel.app/?qr=slowianki_obecnosc
   const stałyLinkQR = window.location.origin + '?akcja=obecnosc_qr';
 
-  // Funkcja wywoływana, gdy członek "skanuje" / klawiszem potwierdza obecność na sali
+  // Funkcja wywoływana, gdy członek potwierdza obecność na sali
   const oznaczObecnoscDzisiaj = async () => {
     setLoading(true);
     setKomunikat('');
@@ -35,7 +34,6 @@ export default function SkanerQR({ profile }) {
       }
 
       // 2. Szukamy próby pasującej do sekcji użytkownika lub próby generalnej
-      // Sprawdzamy też dodatkowe sekcje użytkownika
       let sekcjeUzytkownika = [profile.sekcja, 'generalna'];
       const { data: dodatkowe } = await supabase
         .from('dodatkowe_sekcje')
@@ -47,7 +45,6 @@ export default function SkanerQR({ profile }) {
         dodatkowe.forEach(d => sekcjeUzytkownika.push(d.sekcja));
       }
 
-      // Znajdujemy próbę, na którą użytkownik powinien dzisiaj uczęszczać
       const dzisiejszaProba = probyDzis.find(p => sekcjeUzytkownika.includes(p.sekcja));
 
       if (!dzisiejszaProba) {
@@ -88,7 +85,7 @@ export default function SkanerQR({ profile }) {
         Zeskanuj stały kod QR na sali prób, aby natychmiast odnotować swoją obecność na dzisiejszych zajęciach.
       </p>
 
-      {/* WIDOK DLA KADRY / KIEROWNIKA (Wyświetlanie kodu do powieszenia/pokazania) */}
+      {/* WIDOK DLA KADRY / KIEROWNIKA */}
       {isKadra && (
         <div style={{ marginBottom: '30px', padding: '20px', backgroundColor: '#f8fafc', borderRadius: '10px', border: '1px solid #cbd5e1', display: 'inline-block' }}>
           <p style={{ fontWeight: 'bold', color: '#1e293b', marginBottom: '15px' }}>📌 Stały kod QR Zespołu (dla sali prób):</p>
@@ -110,7 +107,7 @@ export default function SkanerQR({ profile }) {
           </p>
 
           <button
-            onClick={znaczObecnoscDzisiaj}
+            onClick={oznaczObecnoscDzisiaj}
             disabled={loading}
             style={{
               width: '100%',
