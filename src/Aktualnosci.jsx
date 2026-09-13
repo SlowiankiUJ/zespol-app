@@ -8,6 +8,10 @@ export default function Aktualnosci({ profile }) {
   const [komunikat, setKomunikat] = useState('');
   const [odczytyMap, setOdczytyMap] = useState({});
   const [rozwinieteStatystyki, setRozwinieteStatystyki] = useState({});
+  
+  // Stany do obsługi komentarzy
+  const [komentarzeMap, setKomentarzeMap] = useState({});
+  const [noweKomentarze, setNoweKomentarze] = useState({});
 
   const isKierownik = profile?.rola === 'kierownik';
 
@@ -19,15 +23,18 @@ export default function Aktualnosci({ profile }) {
 
   const pobierzAktualnosci = async () => {
     try {
+      // Pobieramy aktualności wraz z danymi autora wpisu z tabeli profiles
       const { data, error } = await supabase
         .from('aktualnosci')
-        .select('*')
+        .select('*, profiles:id_autora(imie_nazwisko, rola, sekcja, avatar_url)')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
       if (data) {
         setWpisy(data);
-        pobierzOdczyty(data.map(w => w.id));
+        const wpisIds = data.map(w => w.id);
+        pobierzOdczyty(wpisIds);
+        pobierzKomentarze(wpisIds);
       }
     } catch (err) {
       console.error("Błąd pobierania aktualności:", err.message);
@@ -57,8 +64,32 @@ export default function Aktualnosci({ profile }) {
     }
   };
 
+  const pobierzKomentarze = async (wpisIds) => {
+    if (!wpisIds || wpisIds.length === 0) return;
+    try {
+      // Pobieramy komentarze powiązane z aktualnościami wraz z profilem autora komentarza
+      const { data, error } = await supabase
+        .from('aktualnosci_komentarze')
+        .select('*, profiles:id_uzytkownika(imie_nazwisko, rola, sekcja)')
+        .in('id_aktualnosci', wpisIds)
+        .order('created_at', { ascending: true });
+
+      if (!error && data) {
+        const mapa = {};
+        wpisIds.forEach(id => { mapa[id] = []; });
+        data.forEach(k => {
+          if (mapa[k.id_aktualnosci]) {
+            mapa[k.id_aktualnosci].push(k);
+          }
+        });
+        setKomentarzeMap(mapa);
+      }
+    } catch (err) {
+      console.error("Błąd pobierania komentarzy:", err);
+    }
+  };
+
   const oznaczJakoOdczytane = async (aktualnoscId) => {
-    // Oznaczamy jako odczytane dla zwykłych członków (lub opcjonalnie także dla instruktora, jeśli ma tylko czytać)
     if (profile && (profile.rola === 'członek' || profile.rola === 'pracownik')) {
       await supabase
         .from('aktualnosci_odczyty')
@@ -85,6 +116,25 @@ export default function Aktualnosci({ profile }) {
       setTresc('');
       pobierzAktualnosci();
       setTimeout(() => setKomunikat(''), 3000);
+    }
+  };
+
+  const dodajKomentarz = async (e, aktualnoscId) => {
+    e.preventDefault();
+    const trescKomentarza = noweKomentarze[aktualnoscId];
+    if (!trescKomentarza || !trescKomentarza.trim()) return;
+
+    const { error } = await supabase.from('aktualnosci_komentarze').insert([{
+      id_aktualnosci: aktualnoscId,
+      id_uzytkownika: profile.id,
+      tresc: trescKomentarza.trim()
+    }]);
+
+    if (!error) {
+      setNoweKomentarze(prev => ({ ...prev, [aktualnoscId]: '' }));
+      pobierzKomentarze([aktualnoscId]);
+    } else {
+      alert('Błąd podczas dodawania komentarza: ' + error.message);
     }
   };
 
@@ -129,8 +179,9 @@ export default function Aktualnosci({ profile }) {
           {wpisy.map(wpis => {
             const odczytanePrzez = odczytyMap[wpis.id] || [];
             const czyRozwinieteStaty = rozwinieteStatystyki[wpis.id];
+            const komentarzeWpisu = komentarzeMap[wpis.id] || [];
+            const autor = wpis.profiles;
             
-            // Rejestracja odczytu dla członka oraz instruktora
             if (profile?.rola === 'członek' || profile?.rola === 'pracownik') {
               oznaczJakoOdczytane(wpis.id);
             }
@@ -139,12 +190,11 @@ export default function Aktualnosci({ profile }) {
               <div key={wpis.id} style={{ padding: '20px', backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 2px 4px rgba(0,0,0,0.01)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
                   <div>
-                    <h3 style={{ margin: '0 0 6px 0', color: '#1e293b', fontSize: '18px' }}>{wpis.tytul}</h3>
-                    <p style={{ margin: '0 0 12px 0', fontSize: '12px', color: '#64748b' }}>
-                      Opublikowano: {new Date(wpis.created_at).toLocaleDateString('pl-PL')} o {new Date(wpis.created_at).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}
+                    <h3 style={{ margin: '0 0 4px 0', color: '#1e293b', fontSize: '18px' }}>{wpis.tytul}</h3>
+                    <p style={{ margin: '0 0 10px 0', fontSize: '12px', color: '#64748b' }}>
+                      Opublikował/a: <strong style={{ color: '#475569' }}>{autor ? autor.imie_nazwisko : 'Kadra zespołu'}</strong> ({autor ? autor.rola : 'kierownik'}) • {new Date(wpis.created_at).toLocaleDateString('pl-PL')} o {new Date(wpis.created_at).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}
                     </p>
                   </div>
-                  {/* Przycisk usuwania - TYLKO DLA KIEROWNIKA */}
                   {isKierownik && (
                     <button onClick={() => usunWpis(wpis.id)} style={{ padding: '5px 10px', backgroundColor: '#ef4444', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>Usuń 🗑️</button>
                   )}
@@ -158,7 +208,6 @@ export default function Aktualnosci({ profile }) {
                   <span style={{ fontSize: '13px', color: '#64748b' }}>
                     👁️ Przeczytało: <strong>{odczytanePrzez.length}</strong> osób
                   </span>
-                  {/* Przycisk podglądu statystyk odczytów - TYLKO DLA KIEROWNIKA */}
                   {isKierownik && (
                     <button 
                       onClick={() => setRozwinieteStatystyki(prev => ({ ...prev, [wpis.id]: !prev[wpis.id] }))}
@@ -169,7 +218,6 @@ export default function Aktualnosci({ profile }) {
                   )}
                 </div>
 
-                {/* Rozwijana lista osób, które odczytały - TYLKO DLA KIEROWNIKA */}
                 {isKierownik && czyRozwinieteStaty && (
                   <div style={{ marginTop: '10px', padding: '10px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
                     <p style={{ margin: '0 0 6px 0', fontSize: '12px', fontWeight: 'bold', color: '#475569' }}>Lista osób, które odczytały komunikat:</p>
@@ -186,6 +234,53 @@ export default function Aktualnosci({ profile }) {
                     )}
                   </div>
                 )}
+
+                {/* SEKCJA KOMENTARZY */}
+                <div style={{ marginTop: '20px', borderTop: '1px dashed #e2e8f0', paddingTop: '15px' }}>
+                  <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#334155' }}>Komentarze i odpowiedzi ({komentarzeWpisu.length}):</h4>
+                  
+                  {komentarzeWpisu.length === 0 ? (
+                    <p style={{ fontSize: '13px', color: '#94a3b8', fontStyle: 'italic', marginBottom: '12px' }}>Brak komentarzy. Bądź pierwszy!</p>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '15px' }}>
+                      {komentarzeWpisu.map(kom => {
+                        const autorKomentarza = kom.profiles;
+                        return (
+                          <div key={kom.id} style={{ padding: '10px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                              <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#1e293b' }}>
+                                {autorKomentarza ? autorKomentarza.imie_nazwisko : 'Użytkownik'} 
+                                <span style={{ fontWeight: 'normal', color: '#64748b', fontSize: '11px', marginLeft: '6px' }}>
+                                  ({autorKomentarza?.rola === 'członek' ? autorKomentarza?.sekcja : autorKomentarza?.rola})
+                                </span>
+                              </span>
+                              <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                                {new Date(kom.created_at).toLocaleDateString('pl-PL')} {new Date(kom.created_at).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+                            <p style={{ margin: 0, fontSize: '13px', color: '#334155', whiteSpace: 'pre-wrap' }}>{kom.tresc}</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Formularz dodawania komentarza */}
+                  <form onSubmit={(e) => dodajKomentarz(e, wpis.id)} style={{ display: 'flex', gap: '8px' }}>
+                    <input 
+                      type="text" 
+                      placeholder="Napisz odpowiedź..." 
+                      value={noweKomentarze[wpis.id] || ''} 
+                      onChange={(e) => setNoweKomentarze({ ...noweKomentarze, [wpis.id]: e.target.value })}
+                      style={{ flex: 1, padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+                      required
+                    />
+                    <button type="submit" style={{ padding: '8px 14px', backgroundColor: '#8b5cf6', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer' }}>
+                      Odpowiedz 💬
+                    </button>
+                  </form>
+                </div>
+
               </div>
             );
           })}
