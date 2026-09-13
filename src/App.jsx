@@ -11,6 +11,7 @@ import ZarzadzanieCzlonkami from './ZarzadzanieCzlonkami';
 import OneSignal from 'react-onesignal';
 import Aktualnosci from './Aktualnosci';
 import Osiagniecia from './Osiagniecia';
+import SkanerQR from './SkanerQR';
 
 export default function App() {
   const [session, setSession] = useState(null);
@@ -231,6 +232,7 @@ export default function App() {
         {profile?.rola === 'członek' && (
           <>
             <button onClick={() => setAktywnaZakladka('harmonogram')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'harmonogram' ? '#8b5cf6' : '#f8fafc', color: aktywnaZakladka === 'harmonogram' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>📅 Harmonogram prób</button>
+            <button onClick={() => setAktywnaZakladka('skaner_qr')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'skaner_qr' ? '#8b5cf6' : '#f8fafc', color: aktywnaZakladka === 'skaner_qr' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>📷 Skaner QR</button>
             <button onClick={() => setAktywnaZakladka('aktualnosci')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'aktualnosci' ? '#8b5cf6' : '#f8fafc', color: aktywnaZakladka === 'aktualnosci' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>📢 Aktualności</button>
             <button onClick={() => setAktywnaZakladka('sprawdz_obecnosc')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'sprawdz_obecnosc' ? '#8b5cf6' : '#f8fafc', color: aktywnaZakladka === 'sprawdz_obecnosc' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>📋 Sprawdź obecność</button>
             <button onClick={() => setAktywnaZakladka('koncerty')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'koncerty' ? '#8b5cf6' : '#f8fafc', color: aktywnaZakladka === 'koncerty' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>🎻 Koncerty</button>
@@ -243,6 +245,7 @@ export default function App() {
         {profile?.rola === 'pracownik' && (
           <>
             <button onClick={() => setAktywnaZakladka('harmonogram')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'harmonogram' ? '#d97706' : '#f8fafc', color: aktywnaZakladka === 'harmonogram' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>📅 Harmonogram prób</button>
+            <button onClick={() => setAktywnaZakladka('skaner_qr')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'skaner_qr' ? '#d97706' : '#f8fafc', color: aktywnaZakladka === 'skaner_qr' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>📷 Kod QR sali</button>
             <button onClick={() => setAktywnaZakladka('aktualnosci')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'aktualnosci' ? '#d97706' : '#f8fafc', color: aktywnaZakladka === 'aktualnosci' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>📢 Aktualności</button>
             <button onClick={() => setAktywnaZakladka('koncerty')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'koncerty' ? '#d97706' : '#f8fafc', color: aktywnaZakladka === 'koncerty' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>🎻 Koncerty</button>
           </>
@@ -251,6 +254,7 @@ export default function App() {
         {profile?.rola === 'kierownik' && (
           <>
             <button onClick={() => setAktywnaZakladka('harmonogram')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'harmonogram' ? '#3182ce' : '#f8fafc', color: aktywnaZakladka === 'harmonogram' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>📅 Harmonogram prób</button>
+            <button onClick={() => setAktywnaZakladka('skaner_qr')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'skaner_qr' ? '#3182ce' : '#f8fafc', color: aktywnaZakladka === 'skaner_qr' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>📷 Kod QR sali</button>
             <button onClick={() => setAktywnaZakladka('aktualnosci')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'aktualnosci' ? '#3182ce' : '#f8fafc', color: aktywnaZakladka === 'aktualnosci' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>📢 Aktualności</button>
             <button onClick={() => setAktywnaZakladka('czlonkowie')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'czlonkowie' ? '#3182ce' : '#f8fafc', color: aktywnaZakladka === 'czlonkowie' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>👥 Członkowie</button>
             <button onClick={() => setAktywnaZakladka('koncerty')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'koncerty' ? '#3182ce' : '#f8fafc', color: aktywnaZakladka === 'koncerty' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>🎻 Koncerty</button>
@@ -262,6 +266,7 @@ export default function App() {
       {/* Główna zawartość */}
       <main style={{ maxWidth: '1000px', margin: '20px auto', padding: '0 20px' }}>
         {aktywnaZakladka === 'harmonogram' && <Harmonogram profile={profile} />}
+        {aktywnaZakladka === 'skaner_qr' && <SkanerQR profile={profile} />}
         {aktywnaZakladka === 'aktualnosci' && <Aktualnosci profile={profile} />}
         {aktywnaZakladka === 'czlonkowie' && profile?.rola === 'kierownik' && <ZarzadzanieCzlonkami />}
         {aktywnaZakladka === 'sprawdz_obecnosc' && profile?.rola === 'członek' && <PodgladObecnosciCzlonka profile={profile} />}
