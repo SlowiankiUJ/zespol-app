@@ -22,6 +22,7 @@ export default function Harmonogram({ profile }) {
   const [usprawiedliwienia, setUsprawiedliwienia] = useState({});
   const [aktywneInputyUsprawiedliwienia, setAktywneInputyUsprawiedliwienia] = useState({});
   const [rozwinitaObecnosc, setRozwinitaObecnosc] = useState({});
+  const [liczbaZadeklarowanych, setLiczbaZadeklarowanych] = useState({});
   
   const [rozwinieteMiesiace, setRozwinieteMiesiace] = useState({});
 
@@ -51,6 +52,26 @@ export default function Harmonogram({ profile }) {
     }
   }, [profile]);
 
+  // Pobieranie liczby osób zadeklarowanych ("Będę") na próby
+  const pobierzLiczbeZadeklarowanych = async (probyList) => {
+    if (!probyList || probyList.length === 0) return;
+    const probaIds = probyList.map(p => p.id);
+
+    const { data, error } = await supabase
+      .from('deklaracje_obecnosci')
+      .select('id_proby, planuje')
+      .in('id_proby', probaIds)
+      .eq('planuje', true);
+
+    if (!error && data) {
+      const counts = {};
+      data.forEach(d => {
+        counts[d.id_proby] = (counts[d.id_proby] || 0) + 1;
+      });
+      setLiczbaZadeklarowanych(counts);
+    }
+  };
+
   const pobierzProby = async () => {
     let sekcjeDoPobrania = [];
     if (profile && profile.rola === 'członek') {
@@ -65,10 +86,16 @@ export default function Harmonogram({ profile }) {
 
       if (sekcjeDoPobrania.length === 0) { setProby([]); return; }
       const { data, error } = await supabase.from('proby').select('*').in('sekcja', sekcjeDoPobrania).order('data_czas', { ascending: true });
-      if (!error && data) setProby(data);
+      if (!error && data) {
+        setProby(data);
+        pobierzLiczbeZadeklarowanych(data);
+      }
     } else {
       const { data, error } = await supabase.from('proby').select('*').order('data_czas', { ascending: true });
-      if (!error && data) setProby(data);
+      if (!error && data) {
+        setProby(data);
+        pobierzLiczbeZadeklarowanych(data);
+      }
     }
   };
 
@@ -191,6 +218,9 @@ export default function Harmonogram({ profile }) {
     if (!error) {
       setDeklaracje(prev => ({ ...prev, [probaId]: statusPlanuje }));
       if (statusPlanuje === true) { setUsprawiedliwienia(prev => ({ ...prev, [probaId]: null })); setAktywneInputyUsprawiedliwienia(prev => ({ ...prev, [probaId]: '' })); }
+      
+      // Odświeżenie licznika po kliknięciu deklaracji
+      pobierzLiczbeZadeklarowanych(proby);
     }
   };
 
@@ -234,6 +264,13 @@ export default function Harmonogram({ profile }) {
   const inputStyle = { width: '100%', boxSizing: 'border-box', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', fontSize: '14px' };
   const labelStyle = { display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#64748b', marginBottom: '4px' };
 
+  // Pomocnicza funkcja odmieniająca słowo "osób"
+  const formatujLiczbeOsob = (n) => {
+    if (n === 1) return '1 osoba zadeklarowała obecność';
+    if (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20)) return `${n} osoby zadeklarowały obecność`;
+    return `${n} osób zadeklarowało obecność`;
+  };
+
   return (
     <div style={{ marginTop: '20px', padding: '25px', border: '1px solid #e2e8f0', borderRadius: '12px', backgroundColor: '#ffffff', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
       <h2 style={{ color: '#1e293b', marginBottom: '15px', fontSize: '20px' }}>Harmonogram Prób i Zgłoszenia</h2>
@@ -261,7 +298,6 @@ export default function Harmonogram({ profile }) {
                   <option value="balet">Sekcja: Balet</option>
                   <option value="chór">Sekcja: Chór</option>
                   <option value="kapela">Sekcja: Kapela</option>
-                  {/* Próba generalna widoczna wyłącznie dla kierownika */}
                   {isKierownik && <option value="generalna">🎭 Próba generalna (Cały zespół)</option>}
                 </select>
               </div>
@@ -352,6 +388,8 @@ export default function Harmonogram({ profile }) {
                       const deklaracjaUzytkownika = deklaracje[proba.id];
                       const czyEdytowana = edycjaProbaId === proba.id;
                       const isRozwinietaDlaKadry = rozwinitaObecnosc[proba.id];
+                      
+                      const liczbaOsobZadeklarowanych = liczbaZadeklarowanych[proba.id] || 0;
 
                       return (
                         <div key={proba.id} style={{ 
@@ -379,9 +417,14 @@ export default function Harmonogram({ profile }) {
                             <>
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
                                 <div>
-                                  <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold', backgroundColor: stylSekcji.glowny, color: 'white', marginBottom: '6px', textTransform: 'uppercase' }}>
-                                    {proba.sekcja === 'generalna' ? '🎭 Próba generalna' : proba.sekcja}
-                                  </span>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '6px' }}>
+                                    <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold', backgroundColor: stylSekcji.glowny, color: 'white', textTransform: 'uppercase' }}>
+                                      {proba.sekcja === 'generalna' ? '🎭 Próba generalna' : proba.sekcja}
+                                    </span>
+                                    <span style={{ fontSize: '12px', fontWeight: '600', color: '#475569' }}>
+                                      ({formatujLiczbeOsob(liczbaOsobZadeklarowanych)})
+                                    </span>
+                                  </div>
                                   <h4 style={{ margin: '0 0 5px 0', color: '#1e293b', fontSize: '16px' }}>
                                     📅 {formatujWyswietlanie(proba.data_czas)}
                                   </h4>
