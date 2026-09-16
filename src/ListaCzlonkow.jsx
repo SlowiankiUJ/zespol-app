@@ -1,6 +1,18 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 
+// Funkcja usuwająca polskie znaki, spacje i ujednolicająca wielkość liter (np. "Chór" -> "chor", "chór " -> "chor")
+const oczyscSekcje = (str) => {
+  if (!str) return '';
+  return str
+    .toString()
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/ł/g, 'l');
+};
+
 export default function ListaCzlonkow({ profile }) {
   const [czlonkowie, setCzlonkowie] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -37,7 +49,7 @@ export default function ListaCzlonkow({ profile }) {
     setLoading(true);
 
     try {
-      const glownaSekcjaClean = (wybranaOsoba.sekcja || '').trim().toLowerCase();
+      const sekcjaGlownaOsoby = oczyscSekcje(wybranaOsoba.sekcja);
 
       // 1. Pobieramy próby i deklaracje
       const { data: probyList } = await supabase
@@ -62,23 +74,24 @@ export default function ListaCzlonkow({ profile }) {
           dekMap[String(d.id_proby)] = d.obecny;
         });
 
-        // Bierzemy TYLKO oficjalne próby danej osoby (odrzucamy gościnne i generalne)
+        // BEZWZGLĘDNY FILTR: Wybieramy TYLKO próby, których oczyszczona sekcja zgadza się z sekcją główną
+        // Odrzucamy każdą inną sekcję (gościnne) oraz próbę generalną!
         const wlasneProby = probyList.filter(p => {
-          const s = (p.sekcja || '').trim().toLowerCase();
-          return s === glownaSekcjaClean && s !== 'generalna';
+          const s = oczyscSekcje(p.sekcja);
+          return s === sekcjaGlownaOsoby && s !== 'generalna';
         });
 
-        // STREAK
+        // STREAK - liczymy od najnowszej do najstarszej próby z WŁASNEJ sekcji
         for (const p of wlasneProby) {
           const stan = dekMap[String(p.id)];
           if (stan === true) {
             aktualnyStreak++;
           } else if (stan === false) {
-            break;
+            break; // Przerwanie streaka przy pierwszej nieobecności na własnej próbie
           }
         }
 
-        // FREKWENCJA
+        // FREKWENCJA - liczymy TYLKO z prób z WŁASNEJ sekcji
         wlasneProby.forEach(p => {
           const stan = dekMap[String(p.id)];
           if (stan === true) {
@@ -92,7 +105,7 @@ export default function ListaCzlonkow({ profile }) {
 
       const procentFrekwencji = tot > 0 ? Math.round((ob / tot) * 100) : 0;
 
-      // 2. Koncerty - TYLKO zakwalifikowany === true
+      // 2. Koncerty - TYLKO z zatwierdzoną kwalifikacją (zakwalifikowany === true)
       const { data: dekKoncerty } = await supabase
         .from('deklaracje_koncerty')
         .select('id_koncertu, zakwalifikowany')
@@ -103,7 +116,7 @@ export default function ListaCzlonkow({ profile }) {
         liczbaKoncertow = zakwalifikowaneKoncerty.length;
       }
 
-      // 3. Występy w obsadzie
+      // 3. Występy w obsadzie programów
       const { data: obsadaData } = await supabase
         .from('koncert_obsada')
         .select('id')
