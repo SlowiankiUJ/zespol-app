@@ -55,11 +55,32 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
+  // Nasłuchiwanie na żywo: zmiany w profilu (np. gdy kierownik zatwierdzi konto) oraz streak
   useEffect(() => {
     if (!profile) return;
 
-    const channel = supabase
-      .channel('zmiany_streaka_uzytkownika')
+    // 1. Nasłuchiwanie na zatwierdzenie konta w profiles
+    const profilChannel = supabase
+      .channel(`zmiany_profilu_${profile.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'profiles',
+          filter: `id=eq.${profile.id}`
+        },
+        (payload) => {
+          if (payload.new) {
+            setProfile(payload.new);
+          }
+        }
+      )
+      .subscribe();
+
+    // 2. Nasłuchiwanie na deklaracje (streak)
+    const streakChannel = supabase
+      .channel(`zmiany_streaka_${profile.id}`)
       .on(
         'postgres_changes',
         {
@@ -75,9 +96,10 @@ export default function App() {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(profilChannel);
+      supabase.removeChannel(streakChannel);
     };
-  }, [profile]);
+  }, [profile?.id]);
 
   const pobierzProfil = async (userId) => {
     try {
@@ -89,7 +111,9 @@ export default function App() {
 
       if (error) throw error;
       setProfile(data);
-      obliczStreak(userId, data.sekcja);
+      if (data && czyKontoZatwierdzone(data.status)) {
+        obliczStreak(userId, data.sekcja);
+      }
     } catch (error) {
       console.error('Błąd pobierania profilu:', error.message);
     } finally {
@@ -97,12 +121,17 @@ export default function App() {
     }
   };
 
+  const czyKontoZatwierdzone = (status) => {
+    if (!status) return false;
+    const s = status.toString().trim().toLowerCase();
+    return s === 'zatwierdzony';
+  };
+
   const obliczStreak = async (userId, sekcjaGlowna) => {
     try {
       if (!sekcjaGlowna) return;
       const glownaSekcjaClean = sekcjaGlowna.trim().toLowerCase();
 
-      // Pobieramy próby i deklaracje
       const { data: probyList } = await supabase
         .from('proby')
         .select('id, data_czas, sekcja')
@@ -123,7 +152,7 @@ export default function App() {
         dekMap[String(d.id_proby)] = d.obecny;
       });
 
-      // Bierzemy TYLKO próby głównej sekcji (odrzucamy gościnne i próbę generalną)
+      // TYLKO próby sekcji macierzystej
       const wlasneProby = probyList.filter(p => {
         const s = (p.sekcja || '').trim().toLowerCase();
         return s === glownaSekcjaClean && s !== 'generalna';
@@ -135,7 +164,7 @@ export default function App() {
         if (stan === true) {
           aktualnyStreak++;
         } else if (stan === false) {
-          break; // Koniec streaka przy pierwszej nieobecności na własnej próbie
+          break;
         }
       }
 
@@ -148,8 +177,8 @@ export default function App() {
 
   if (loading || (session && !profile)) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', fontFamily: 'sans-serif' }}>
-        <p style={{ fontSize: '18px', color: '#4a5568' }}>Ładowanie profilu użytkownika...</p>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', fontFamily: 'sans-serif', backgroundColor: '#f8fafc' }}>
+        <p style={{ fontSize: '18px', color: '#4a5568' }}>Ładowanie aplikacji...</p>
       </div>
     );
   }
@@ -158,23 +187,46 @@ export default function App() {
     return <Login />;
   }
 
-  if (profile && profile.status === 'oczekujacy') {
+  // BLOKADA: Jeśli konto NIE MA statusu "zatwierdzony", użytkownik nie widzi nic poza ekranem oczekiwania
+  if (profile && !czyKontoZatwierdzone(profile.status)) {
     return (
-      <div style={{ maxWidth: '500px', margin: '80px auto', padding: '30px', textAlign: 'center', backgroundColor: '#fff', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', fontFamily: 'sans-serif' }}>
-        <h2 style={{ color: '#d97706', marginBottom: '15px' }}>Konto oczekuje na zatwierdzenie ⏳</h2>
-        <p style={{ color: '#4b5563', lineHeight: '1.6' }}>
-          Witaj, <strong>{profile.imie_nazwisko}</strong>! Twoje konto zostało utworzone i czeka na akceptację przez kierownictwo zespołu.
-        </p>
-        <button 
-          onClick={() => supabase.auth.signOut()}
-          style={{ marginTop: '25px', padding: '10px 20px', backgroundColor: '#ef4444', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}
-        >
-          Wyloguj się
-        </button>
+      <div style={{ minHeight: '100vh', backgroundColor: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: 'sans-serif' }}>
+        <div style={{ maxWidth: '520px', width: '100%', padding: '40px 30px', textAlign: 'center', backgroundColor: '#ffffff', borderRadius: '16px', boxShadow: '0 10px 25px rgba(0,0,0,0.05)', border: '1px solid #e2e8f0' }}>
+          
+          <div style={{ width: '80px', height: '80px', margin: '0 auto 20px auto', backgroundColor: '#fef3c7', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '40px', border: '2px solid #fde68a' }}>
+            ⏳
+          </div>
+
+          <h2 style={{ color: '#1e293b', fontSize: '22px', margin: '0 0 10px 0' }}>
+            Oczekiwanie na akceptację
+          </h2>
+
+          <p style={{ color: '#475569', fontSize: '15px', lineHeight: '1.6', margin: '0 0 20px 0' }}>
+            Witaj, <strong>{profile.imie_nazwisko || 'Członku'}</strong>!<br />
+            Twoje konto zostało utworzone, jednak wymaga jeszcze <strong>zatwierdzenia przez Kierownika Zespołu</strong>.
+          </p>
+
+          <div style={{ padding: '14px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '25px', textAlign: 'left', fontSize: '13px', color: '#64748b' }}>
+            <p style={{ margin: '0 0 4px 0' }}><strong>Sekcja startowa:</strong> <span style={{ textTransform: 'uppercase', color: '#3182ce', fontWeight: 'bold' }}>{profile.sekcja || 'Brak'}</span></p>
+            <p style={{ margin: 0 }}><strong>Status:</strong> <span style={{ color: '#d97706', fontWeight: 'bold' }}>Oczekuje na weryfikację</span></p>
+          </div>
+
+          <p style={{ fontSize: '13px', color: '#94a3b8', margin: '0 0 25px 0' }}>
+            Gdy Kierownik zaakceptuje Twoje zgłoszenie, ta strona odświeży się automatycznie i uzyskasz pełny dostęp do harmonogramu oraz koncertów.
+          </p>
+
+          <button 
+            onClick={() => supabase.auth.signOut()}
+            style={{ padding: '10px 24px', backgroundColor: '#ef4444', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '14px', transition: 'background-color 0.2s' }}
+          >
+            Wyloguj się 🚪
+          </button>
+        </div>
       </div>
     );
   }
 
+  // UŻYTKOWNIK ZATWIERDZONY - PEŁNY DOSTĘP DO APLIKACJI:
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#f1f5f9', fontFamily: 'sans-serif', paddingBottom: '40px' }}>
       <header style={{ backgroundColor: '#1e293b', color: 'white', padding: '15px 30px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
