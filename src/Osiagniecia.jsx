@@ -22,7 +22,7 @@ export default function Osiagniecia({ profile }) {
   const pobierzProfilIOsiagniecia = async (userId) => {
     setLoading(true);
     try {
-      // 1. Zawsze pobieramy świeży i kompletny profil bezpośrednio z bazy dla wskazanego ID
+      // 1. Pobieramy profil użytkownika
       const { data: profData, error: profError } = await supabase
         .from('profiles')
         .select('*')
@@ -38,22 +38,20 @@ export default function Osiagniecia({ profile }) {
       setPelnyProfil(profData);
       const glownaSekcjaClean = (profData.sekcja || '').trim().toLowerCase();
 
-      // 2. Równoległe pobieranie wszystkich danych statystycznych dla tego użytkownika
-      const [
-        resKoncerty,
-        resObsada,
-        resWalizki,
-        resKwiatki,
-        resProby,
-        resObecnosci
-      ] = await Promise.all([
-        supabase.from('deklaracje_koncerty').select('id_koncertu, zakwalifikowany').eq('id_uzytkownika', userId),
-        supabase.from('koncert_obsada').select('id').eq('id_uzytkownika', userId),
-        supabase.from('koncert_walizki').select('id').eq('id_uzytkownika', userId),
-        supabase.from('kwiatki_uczestnicy').select('id, wybrany').eq('id_uzytkownika', userId).eq('wybrany', true),
-        supabase.from('proby').select('id, data_czas, sekcja').order('data_czas', { ascending: false }),
-        supabase.from('deklaracje_obecnosci').select('id_proby, obecny').eq('id_uzytkownika', userId)
-      ]);
+      // 2. Bezpieczne zapytania do każdej tabeli osobno (z łatwym debugowaniem)
+      const resKoncerty = await supabase.from('deklaracje_koncerty').select('id_koncertu, zakwalifikowany').eq('id_uzytkownika', userId);
+      const resObsada = await supabase.from('koncert_obsada').select('id').eq('id_uzytkownika', userId);
+      
+      // Sprawdzamy tabelę walizek (w razie czego obsłużymy błąd nazwy tabeli)
+      const resWalizki = await supabase.from('koncert_walizki').select('id').eq('id_uzytkownika', userId);
+      if (resWalizki.error) console.error('Błąd tabeli koncert_walizki:', resWalizki.error.message);
+
+      // Sprawdzamy tabelę kwiatków
+      const resKwiatki = await supabase.from('kwiatki_uczestnicy').select('id, wybrany').eq('id_uzytkownika', userId).eq('wybrany', true);
+      if (resKwiatki.error) console.error('Błąd tabeli kwiatki_uczestnicy:', resKwiatki.error.message);
+
+      const resProby = await supabase.from('proby').select('id, data_czas, sekcja').order('data_czas', { ascending: false });
+      const resObecnosci = await supabase.from('deklaracje_obecnosci').select('id_proby, obecny').eq('id_uzytkownika', userId);
 
       // Koncerty
       const zakwalifikowaneKoncerty = resKoncerty.data ? resKoncerty.data.filter(d => d.zakwalifikowany === true) : [];
