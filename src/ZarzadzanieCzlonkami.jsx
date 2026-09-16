@@ -38,7 +38,6 @@ export default function ZarzadzanieCzlonkami() {
   const pobierzDane = async () => {
     setLoading(true);
     try {
-      // 1. Pobieramy wszystkich członków
       const { data: profilesData, error: profError } = await supabase
         .from('profiles')
         .select('*')
@@ -46,21 +45,18 @@ export default function ZarzadzanieCzlonkami() {
 
       if (profError) throw profError;
 
-      // 2. Pobieramy wszystkie próby
       const { data: probyData, error: probyError } = await supabase
         .from('proby')
         .select('id, data_czas, sekcja');
 
       if (probyError) throw probyError;
 
-      // 3. Pobieramy wszystkie deklaracje obecności
       const { data: dekData, error: dekError } = await supabase
         .from('deklaracje_obecnosci')
         .select('id_uzytkownika, id_proby, obecny');
 
       if (dekError) throw dekError;
 
-      // Mapa prób po ID dla błyskawicznego wyszukiwania
       const probyMap = {};
       (probyData || []).forEach(p => {
         probyMap[String(p.id)] = {
@@ -69,7 +65,6 @@ export default function ZarzadzanieCzlonkami() {
         };
       });
 
-      // Grupowanie deklaracji według użytkowników
       const userDekMap = {};
       (dekData || []).forEach(d => {
         const uid = d.id_uzytkownika;
@@ -77,7 +72,6 @@ export default function ZarzadzanieCzlonkami() {
         userDekMap[uid].push(d);
       });
 
-      // 4. OBLICZANIE FREKWENCJI DLA KAŻDEGO CZŁONKA (Ściśle sekcyjna, bez gościnnych!)
       const wyliczoneStaty = {};
 
       (profilesData || []).forEach(osoba => {
@@ -88,7 +82,6 @@ export default function ZarzadzanieCzlonkami() {
         let tot = 0;
         let aktualnyStreak = 0;
 
-        // Bierzemy TYLKO te deklaracje, które pochodzą z prób o sekcji identycznej z główną sekcją użytkownika
         const tylkoWlasneObecnosci = deklaracjeOsoby
           .map(d => {
             const probaInfo = probyMap[String(d.id_proby)];
@@ -109,7 +102,6 @@ export default function ZarzadzanieCzlonkami() {
           }
         });
 
-        // Obliczanie streaka (od najnowszych do najstarszych prób macierzystych)
         const posortowane = [...tylkoWlasneObecnosci]
           .filter(item => item.obecny === true || item.obecny === false)
           .sort((a, b) => new Date(b.data_czas) - new Date(a.data_czas));
@@ -177,7 +169,31 @@ export default function ZarzadzanieCzlonkami() {
     if (!error) pobierzDane();
   };
 
-  // Filtrowanie listy
+  // CAŁKOWITE USUNIĘCIE KONTA Z BAZY
+  const usunKontoCalkowicie = async (userId, imieNazwisko) => {
+    const zgoda = window.confirm(
+      `⚠️ UWAGA: Czy na pewno chcesz CAŁKOWICIE I BEZPOWROTNIE usunąć konto użytkownika "${imieNazwisko}"?\n\nOsoba ta zostanie skasowana z systemu logowania, straci dostęp do aplikacji, a jej wpisy zostaną usunięte.`
+    );
+    if (!zgoda) return;
+
+    setKomunikat('Usuwanie konta...');
+    try {
+      const { error } = await supabase.rpc('usun_konto_uzytkownika', { user_id: userId });
+
+      if (error) {
+        // Fallback: próba usunięcia z profiles
+        const { error: deleteProfError } = await supabase.from('profiles').delete().eq('id', userId);
+        if (deleteProfError) throw deleteProfError;
+      }
+
+      setKomunikat(`Konto "${imieNazwisko}" zostało trwale usunięte! 🗑️`);
+      pobierzDane();
+      setTimeout(() => setKomunikat(''), 3500);
+    } catch (err) {
+      setKomunikat('Błąd usuwania konta: ' + err.message);
+    }
+  };
+
   const przefiltrowaniCzlonkowie = czlonkowie.filter(c => {
     const pasujeSekcja = filtrSekcja === 'wszystkie' ? true : oczyscTekst(c.sekcja) === oczyscTekst(filtrSekcja);
     const pasujeSzukaj = (c.imie_nazwisko || '').toLowerCase().includes(szukanaFraza.toLowerCase());
@@ -194,7 +210,7 @@ export default function ZarzadzanieCzlonkami() {
         <div>
           <h2 style={{ color: '#1e293b', margin: '0 0 5px 0', fontSize: '20px' }}>Zarządzanie Członkami i Frekwencja 👥</h2>
           <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>
-            Frekwencja i streak każdego członka wyliczane są <strong>wyłącznie z prób jego macierzystej sekcji</strong>. Próby gościnne nie wpływają na statystyki.
+            Frekwencja i streak każdego członka wyliczane są <strong>wyłącznie z prób jego macierzystej sekcji</strong>.
           </p>
         </div>
 
@@ -226,7 +242,7 @@ export default function ZarzadzanieCzlonkami() {
         </div>
       )}
 
-      {/* MODAL / FORMULARZ EDYCJI CZŁONKA */}
+      {/* FORMULARZ EDYCJI CZŁONKA */}
       {wybranyDoEdycji && (
         <div style={{ marginBottom: '25px', padding: '20px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '2px solid #3b82f6' }}>
           <h3 style={{ margin: '0 0 15px 0', fontSize: '16px', color: '#1e293b' }}>
@@ -324,19 +340,29 @@ export default function ZarzadzanieCzlonkami() {
                     )}
                   </td>
                   <td style={{ padding: '12px 10px', textAlign: 'right' }}>
-                    <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
-                      <button onClick={() => rozpocznijEdycje(c)} style={{ padding: '5px 10px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>
+                    <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                      <button onClick={() => rozpocznijEdycje(c)} style={{ padding: '5px 8px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>
                         Edytuj ✏️
                       </button>
+                      
                       {c.status === 'oczekujacy' ? (
-                        <button onClick={() => zmienStatusKonta(c.id, 'zatwierdzony')} style={{ padding: '5px 10px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>
+                        <button onClick={() => zmienStatusKonta(c.id, 'zatwierdzony')} style={{ padding: '5px 8px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>
                           Zatwierdź ✔️
                         </button>
                       ) : (
-                        <button onClick={() => zmienStatusKonta(c.id, 'oczekujacy')} style={{ padding: '5px 10px', backgroundColor: '#f59e0b', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>
+                        <button onClick={() => zmienStatusKonta(c.id, 'oczekujacy')} style={{ padding: '5px 8px', backgroundColor: '#f59e0b', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>
                           Zawieś ⏸️
                         </button>
                       )}
+
+                      {/* PRZYCISK TRWAŁEGO USUNIĘCIA KONTA */}
+                      <button 
+                        onClick={() => usunKontoCalkowicie(c.id, c.imie_nazwisko)} 
+                        style={{ padding: '5px 8px', backgroundColor: '#ef4444', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}
+                        title="Usuń trwale konto użytkownika"
+                      >
+                        Usuń 🗑️
+                      </button>
                     </div>
                   </td>
                 </tr>
