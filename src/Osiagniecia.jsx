@@ -13,70 +13,73 @@ export default function Osiagniecia({ profile }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (profile) {
+    if (profile?.id) {
       obliczOsiagniecia();
     }
-  }, [profile]);
+  }, [profile?.id]);
 
   const obliczOsiagniecia = async () => {
+    setLoading(true);
     try {
-      const glownaSekcjaClean = (profile.sekcja || '').trim().toLowerCase();
+      const targetUserId = profile.id;
 
-      // 1. Koncerty - TYLKO z zakwalifikowaniem do składu
-      const { data: dekKoncerty } = await supabase
-        .from('deklaracje_koncerty')
-        .select('id_koncertu, zakwalifikowany')
-        .eq('id_uzytkownika', profile.id);
+      // Jeśli przekazany profil nie ma informacji o sekcji, pobierzmy go z tabeli profiles
+      let glownaSekcjaClean = (profile.sekcja || '').trim().toLowerCase();
+      if (!glownaSekcjaClean) {
+        const { data: profData } = await supabase
+          .from('profiles')
+          .select('sekcja')
+          .eq('id', targetUserId)
+          .single();
+        if (profData?.sekcja) {
+          glownaSekcjaClean = profData.sekcja.trim().toLowerCase();
+        }
+      }
 
-      const zakwalifikowaneKoncerty = dekKoncerty ? dekKoncerty.filter(d => d.zakwalifikowany === true) : [];
+      // Bezpieczne, równoległe pobieranie wszystkich danych
+      const [
+        resKoncerty,
+        resObsada,
+        resWalizki,
+        resKwiatki,
+        resProby,
+        resObecnosci
+      ] = await Promise.all([
+        supabase.from('deklaracje_koncerty').select('id_koncertu, zakwalifikowany').eq('id_uzytkownika', targetUserId),
+        supabase.from('koncert_obsada').select('id').eq('id_uzytkownika', targetUserId),
+        supabase.from('koncert_walizki').select('id').eq('id_uzytkownika', targetUserId),
+        supabase.from('kwiatki_uczestnicy').select('id, wybrany').eq('id_uzytkownika', targetUserId).eq('wybrany', true),
+        supabase.from('proby').select('id, data_czas, sekcja').order('data_czas', { ascending: false }),
+        supabase.from('deklaracje_obecnosci').select('id_proby, obecny').eq('id_uzytkownika', targetUserId)
+      ]);
+
+      // 1. Koncerty
+      const zakwalifikowaneKoncerty = resKoncerty.data ? resKoncerty.data.filter(d => d.zakwalifikowany === true) : [];
       const liczbaKoncertow = zakwalifikowaneKoncerty.length;
 
-      // 2. Występy w obsadzie
-      const { data: obsadaData } = await supabase
-        .from('koncert_obsada')
-        .select('id')
-        .eq('id_uzytkownika', profile.id);
+      // 2. Obsada
+      const liczbaWystepow = resObsada.data ? resObsada.data.length : 0;
 
-      const liczbaWystepow = obsadaData ? obsadaData.length : 0;
+      // 3. Walizki
+      const lacznieWalizki = resWalizki.data ? resWalizki.data.length : 0;
 
-      // 3. Walizki - suma załadunków i rozładunków (przed i po koncercie)
-      const { data: walizkiData } = await supabase
-        .from('koncert_walizki')
-        .select('id')
-        .eq('id_uzytkownika', profile.id);
-
-      const lacznieWalizki = walizkiData ? walizkiData.length : 0;
-
-      // 4. Kwiatki - udział w oficjalnym składzie wybranym przez Kierownika / Inspektora
-      const { data: kwiatkiData } = await supabase
-        .from('kwiatki_uczestnicy')
-        .select('id, wybrany')
-        .eq('id_uzytkownika', profile.id)
-        .eq('wybrany', true);
-
-      const lacznieKwiatki = kwiatkiData ? kwiatkiData.length : 0;
+      // 4. Kwiatki
+      const lacznieKwiatki = resKwiatki.data ? resKwiatki.data.length : 0;
 
       // 5. Próby i obecności
-      const { data: probyList } = await supabase
-        .from('proby')
-        .select('id, data_czas, sekcja')
-        .order('data_czas', { ascending: false });
-
-      const { data: obecnosciData } = await supabase
-        .from('deklaracje_obecnosci')
-        .select('id_proby, obecny')
-        .eq('id_uzytkownika', profile.id);
+      const probyList = resProby.data || [];
+      const obecnosciData = resObecnosci.data || [];
 
       let ma100PrzezMiesiac = false;
       let aktualnyStreak = 0;
 
-      if (probyList && obecnosciData) {
+      if (probyList.length > 0 && obecnosciData.length > 0) {
         const dekMap = {};
         obecnosciData.forEach(d => {
           dekMap[String(d.id_proby)] = d.obecny;
         });
 
-        // Bierzemy TYLKO próby własnej sekcji (odrzucamy gościnne i generalne)
+        // Tylko próby sekcji macierzystej
         const wlasneProby = probyList.filter(p => {
           const s = (p.sekcja || '').trim().toLowerCase();
           return s === glownaSekcjaClean && s !== 'generalna';
@@ -92,7 +95,7 @@ export default function Osiagniecia({ profile }) {
           }
         }
 
-        // FREKWENCJA MIESIĘCZNA 100% (min. 3 próby w miesiącu)
+        // FREKWENCJA MIESIĘCZNA 100%
         const miesiaceMap = {};
         wlasneProby.forEach(p => {
           const miesiacKey = p.data_czas.substring(0, 7);
@@ -164,38 +167,13 @@ export default function Osiagniecia({ profile }) {
       kategoria: 'Frekwencja'
     });
 
-    // 3. WALIZKI (1, 10, 15, 30, 50)
+    // 3. WALIZKI
     const progiWalizek = [
-      { 
-        prog: 1, 
-        tytul: 'Pierwszy ciężar zespołu', 
-        opis: 'Pierwsza walizka załadowana! Plecy lekko pieką, ale krew już buzuje. Dobry początek kariery bagażowego.', 
-        ikona: '🧳' 
-      },
-      { 
-        prog: 10, 
-        tytul: 'Mistrz Bagażnika Autokaru', 
-        opis: '10 walizek noszonych przed lub po! Znasz już wagę każdego stroju i potrafisz upchnąć kufer w luku z zamkniętymi oczami.', 
-        ikona: '🚌' 
-      },
-      { 
-        prog: 15, 
-        tytul: 'Zaufany Tragarz Inspektora', 
-        opis: '15 kursów z walizami. Inspektor na Twój widok tylko kiwa głową z uznaniem – robota pali się w rękach!', 
-        ikona: '💪' 
-      },
-      { 
-        prog: 30, 
-        tytul: 'Chodzący Wózek Widłowy', 
-        opis: '30 razy na walizkach! Twoje przedramiona są twardsze niż podeszwy butów do tańca, a siłownia to dla Ciebie formalność.', 
-        ikona: '🏗️' 
-      },
-      { 
-        prog: 50, 
-        tytul: 'Tytan ze Skały i Żelaza', 
-        opis: '50 zaliczonych walizek! Mięśnie wykute z litej skały, a kufry nosisz po dwa pod pachą. Żaden wyjazd bez Ciebie nie ruszy!', 
-        ikona: '🗿' 
-      }
+      { prog: 1, tytul: 'Pierwszy ciężar zespołu', opis: 'Pierwsza walizka załadowana! Plecy lekko pieką, ale krew już buzuje.', ikona: '🧳' },
+      { prog: 10, tytul: 'Mistrz Bagażnika Autokaru', opis: '10 walizek noszonych przed lub po koncercie!', ikona: '🚌' },
+      { prog: 15, tytul: 'Zaufany Tragarz Inspektora', opis: '15 kursów z walizami. Inspektor na Twój widok tylko kiwa głową z uznaniem.', ikona: '💪' },
+      { prog: 30, tytul: 'Chodzący Wózek Widłowy', opis: '30 razy na walizkach! Twoje przedramiona są twardsze niż podeszwy butów.', ikona: '🏗️' },
+      { prog: 50, tytul: 'Tytan ze Skały i Żelaza', opis: '50 zaliczonych walizek! Żaden wyjazd bez Ciebie nie ruszy!', ikona: '🗿' }
     ];
 
     progiWalizek.forEach(w => {
@@ -210,38 +188,13 @@ export default function Osiagniecia({ profile }) {
       });
     });
 
-    // 4. NOWE OSIĄGNIĘCIA: KWIATKI (1, 3, 5, 10, 20)
+    // 4. KWIATKI
     const progiKwiatkow = [
-      {
-        prog: 1,
-        tytul: 'Debiut w Bukiecie',
-        opis: 'Pierwsze wyjście na kwiatki zaliczone! Wstążki poprawione, uśmiech numer pięć i bukiet wręczony bez upuszczenia.',
-        ikona: '🌸'
-      },
-      {
-        prog: 3,
-        tytul: 'Krakowski Kwiaciarz',
-        opis: '3 delegacje kwiatowe za Tobą! Masz już w małym palcu etykietę, elegancki ukłon i wiesz dokładnie, kiedy zaintonować „Sto lat”.',
-        ikona: '🌷'
-      },
-      {
-        prog: 5,
-        tytul: 'Ulubieniec Jubilatów',
-        opis: '5 wyjść na kwiatki. Inspektor i Kierownik wiedzą, że gdy idziesz w delegacji, zespół prezentuje się nienagannie.',
-        ikona: '💐'
-      },
-      {
-        prog: 10,
-        tytul: 'Mistrz Dyplomacji i Florystyki',
-        opis: '10 zaliczonych kwiatków! Prawdopodobnie znasz z imienia kwiaciarki w połowie Krakowa, a przemówienia improwizujesz w biegu.',
-        ikona: '🌹'
-      },
-      {
-        prog: 20,
-        tytul: 'Żywa Legenda Delegacji',
-        opis: '20 wyjść na kwiatki! Żadna uroczystość uniwersytecka ani ślub nie mogą odbyć się bez Twojej obecności. Status Ambasadora Słowianek!',
-        ikona: '👑'
-      }
+      { prog: 1, tytul: 'Debiut w Bukiecie', opis: 'Pierwsze wyjście na kwiatki zaliczone! Wstążki poprawione, uśmiech numer pięć.', ikona: '🌸' },
+      { prog: 3, tytul: 'Krakowski Kwiaciarz', opis: '3 delegacje kwiatowe za Tobą! Elegancki ukłon i gromkie „Sto lat”.', ikona: '🌷' },
+      { prog: 5, tytul: 'Ulubieniec Jubilatów', opis: '5 wyjść na kwiatki. Zespół prezentuje się nienagannie.', ikona: '💐' },
+      { prog: 10, tytul: 'Mistrz Dyplomacji i Florystyki', opis: '10 zaliczonych kwiatków! Znasz kwiaciarki w połowie Krakowa.', ikona: '🌹' },
+      { prog: 20, tytul: 'Żywa Legenda Delegacji', opis: '20 wyjść na kwiatki! Status Ambasadora Słowianek!', ikona: '👑' }
     ];
 
     progiKwiatkow.forEach(k => {
@@ -262,7 +215,7 @@ export default function Osiagniecia({ profile }) {
       const aktualny = Math.min(staty.koncertyUdział, prog);
       odznaki.push({
         tytuł: `Człowiek Sceny: ${prog} ${prog === 1 ? 'Koncert' : prog < 5 ? 'Koncerty' : 'Koncertów'}`,
-        opis: `Weź udział w ${prog} ${prog === 1 ? 'koncercie' : 'koncertach'} zespołu (wymagana oficjalna kwalifikacja w składzie).`,
+        opis: `Weź udział w ${prog} ${prog === 1 ? 'koncercie' : 'koncertach'} zespołu.`,
         ikona: '🎫',
         zdobyte: staty.koncertyUdział >= prog,
         postęp: `${aktualny}/${prog}`,
@@ -288,7 +241,7 @@ export default function Osiagniecia({ profile }) {
   };
 
   if (loading) {
-    return <div style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>Ładowanie Twoich osiągnięć... 🏆</div>;
+    return <div style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>Ładowanie osiągnięć... 🏆</div>;
   }
 
   const odznaki = generujOdznaki();
@@ -298,12 +251,14 @@ export default function Osiagniecia({ profile }) {
     <div style={{ marginTop: '20px', padding: '25px', border: '1px solid #e2e8f0', borderRadius: '12px', backgroundColor: '#ffffff', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '20px' }}>
         <div>
-          <h2 style={{ color: '#1e293b', margin: '0 0 5px 0', fontSize: '20px' }}>Twoje Osiągnięcia i Medale 🏆</h2>
+          <h2 style={{ color: '#1e293b', margin: '0 0 5px 0', fontSize: '20px' }}>
+            Osiągnięcia i Medale: {profile.imie_nazwisko || 'Członek'} 🏆
+          </h2>
           <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>
-            Próby sekcyjne, koncerty, walizki oraz delegacje kwiatowe! 
             Streak: <strong style={{ color: '#8b5cf6' }}>🔥 {staty.streak} prób</strong> | 
             Walizki: <strong style={{ color: '#0284c7' }}>🧳 {staty.liczbaWalizek}</strong> | 
-            Kwiatki: <strong style={{ color: '#db2777' }}>🌸 {staty.liczbaKwiatkow}</strong>
+            Kwiatki: <strong style={{ color: '#db2777' }}>🌸 {staty.liczbaKwiatkow}</strong> |
+            Koncerty: <strong style={{ color: '#10b981' }}>🎫 {staty.koncertyUdział}</strong>
           </p>
         </div>
         <div style={{ padding: '8px 16px', backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '20px', color: '#15803d', fontWeight: 'bold', fontSize: '14px' }}>
@@ -328,9 +283,9 @@ export default function Osiagniecia({ profile }) {
                 borderRadius: '10px', 
                 border: odznaka.zdobyte ? '2px solid #10b981' : '1px solid #cbd5e1', 
                 backgroundColor: odznaka.zdobyte ? '#f0fdf4' : '#f8fafc',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'space-between',
+                display: 'flex', 
+                flexDirection: 'column', 
+                justifyContent: 'space-between', 
                 boxShadow: odznaka.zdobyte ? '0 4px 12px rgba(16, 185, 129, 0.15)' : 'none',
                 transition: 'all 0.3s ease'
               }}
