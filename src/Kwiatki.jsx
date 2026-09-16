@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 
-// Bezpieczne formatowanie daty i godziny bez przeliczania stref czasowych
+// Precyzyjne formatowanie daty i godziny wyciągnięte bezpośrednio z tekstu bazy (bez konwersji strefy)
 const formatujDate = (dataString) => {
   if (!dataString) return '';
   const [dataCzesc, czasCzesc] = dataString.split('T');
   if (!dataCzesc || !czasCzesc) return dataString;
   
   const [rok, mc, dzien] = dataCzesc.split('-');
-  const [godzina, minuta] = czasCzesc.split(':');
+  const [godzina, minuta] = czasCzesc.substring(0, 5).split(':');
   
   return `${dzien}.${mc}.${rok}, ${godzina}:${minuta}`;
 };
@@ -21,12 +21,12 @@ const RenderAvatar = ({ url }) => (
 
 export default function Kwiatki({ profile }) {
   const [wydarzenia, setWydarzenia] = useState([]);
-  const [uczestnicyMap, setUczestnicyMap] = useState({}); // id_kwiatka -> [ { ...profil, zgloszony, wybrany } ]
+  const [uczestnicyMap, setUczestnicyMap] = useState({});
   const [wszyscyCzlonkowie, setWszyscyCzlonkowie] = useState([]);
   const [loading, setLoading] = useState(true);
   const [komunikat, setKomunikat] = useState('');
 
-  // Formularz nowego wydarzenia (Kierownik / Inspektor)
+  // Formularz nowego wydarzenia
   const [tytul, setTytul] = useState('');
   const [dataWydarzenia, setDataWydarzenia] = useState('');
   const [godzinaWydarzenia, setGodzinaWydarzenia] = useState('17:00');
@@ -34,7 +34,14 @@ export default function Kwiatki({ profile }) {
   const [opis, setOpis] = useState('');
   const [wybranaOsobaRęcznie, setWybranaOsobaRęcznie] = useState({});
 
-  // Uprawnienia zarządcze: Kierownik lub Inspektor Sekcji
+  // Stany edycji istniejącego wydarzenia
+  const [edycjaKwiatekId, setEdycjaKwiatekId] = useState(null);
+  const [editTytul, setEditTytul] = useState('');
+  const [editData, setEditData] = useState('');
+  const [editGodzina, setEditGodzina] = useState('');
+  const [editMiejsce, setEditMiejsce] = useState('');
+  const [editOpis, setEditOpis] = useState('');
+
   const czyZarzadzaKwiatkami = Boolean(profile?.rola === 'kierownik' || profile?.czy_inspektor);
 
   useEffect(() => {
@@ -46,7 +53,6 @@ export default function Kwiatki({ profile }) {
   const pobierzWszystko = async () => {
     setLoading(true);
     try {
-      // 1. Pobieramy listę wydarzeń
       const { data: kwiatkiData, error: errK } = await supabase
         .from('kwiatki')
         .select('*')
@@ -54,7 +60,6 @@ export default function Kwiatki({ profile }) {
 
       if (errK) throw errK;
 
-      // 2. Pobieramy wszystkich członków zespołu
       const { data: profData } = await supabase
         .from('profiles')
         .select('id, imie_nazwisko, sekcja, glos, avatar_url')
@@ -67,7 +72,6 @@ export default function Kwiatki({ profile }) {
       const profileMap = {};
       (profData || []).forEach(p => { profileMap[p.id] = p; });
 
-      // 3. Pobieramy deklaracje i wybory
       const { data: uczData, error: errU } = await supabase
         .from('kwiatki_uczestnicy')
         .select('*');
@@ -101,8 +105,7 @@ export default function Kwiatki({ profile }) {
     e.preventDefault();
     if (!dataWydarzenia) { alert('Wybierz datę wydarzenia.'); return; }
 
-    // Zapis w formacie dosłownym z sufiksem Z eliminującym przesuwanie strefy czasowej
-    const pelnaDataCzas = `${dataWydarzenia}T${godzinaWydarzenia}:00Z`;
+    const pelnaDataCzas = `${dataWydarzenia}T${godzinaWydarzenia}:00`;
 
     const { error } = await supabase
       .from('kwiatki')
@@ -118,13 +121,42 @@ export default function Kwiatki({ profile }) {
     }
   };
 
+  const rozpocznijEdycje = (kw) => {
+    setEdycjaKwiatekId(kw.id);
+    setEditTytul(kw.tytul);
+    setEditData(kw.data_czas ? kw.data_czas.substring(0, 10) : '');
+    setEditGodzina(kw.data_czas ? kw.data_czas.substring(11, 16) : '17:00');
+    setEditMiejsce(kw.miejsce || '');
+    setEditOpis(kw.opis || '');
+  };
+
+  const anulujEdycje = () => {
+    setEdycjaKwiatekId(null);
+  };
+
+  const zapiszEdycje = async (id) => {
+    if (!editData || !editGodzina) { alert('Uzupełnij datę i godzinę.'); return; }
+    const pelnaDataCzas = `${editData}T${editGodzina}:00`;
+
+    const { error } = await supabase
+      .from('kwiatki')
+      .update({ tytul: editTytul, data_czas: pelnaDataCzas, miejsce: editMiejsce, opis: editOpis })
+      .eq('id', id);
+
+    if (error) {
+      alert('Błąd podczas edycji: ' + error.message);
+    } else {
+      setEdycjaKwiatekId(null);
+      pobierzWszystko();
+    }
+  };
+
   const usunWydarzenie = async (id) => {
     if (!window.confirm('Czy na pewno chcesz usunąć to wydarzenie?')) return;
     const { error } = await supabase.from('kwiatki').delete().eq('id', id);
     if (!error) pobierzWszystko();
   };
 
-  // Członek sam się zgłasza / rezygnuje ze zgłoszenia
   const zmienMojeZgloszenie = async (kwiatekId, czyChce) => {
     if (czyChce) {
       const { error } = await supabase
@@ -141,7 +173,6 @@ export default function Kwiatki({ profile }) {
     }
   };
 
-  // Kierownik lub Inspektor decyduje: zatwierdza do ostatecznego pójścia na kwiatki
   const przelaczWyborOsoby = async (kwiatekId, userId, aktualnieWybrany) => {
     if (!czyZarzadzaKwiatkami) return;
 
@@ -152,7 +183,6 @@ export default function Kwiatki({ profile }) {
     if (!error) pobierzWszystko();
   };
 
-  // Kierownik / Inspektor ręcznie dodaje członka
   const dodajCzlonkaRecznie = async (kwiatekId) => {
     const userId = wybranaOsobaRęcznie[kwiatekId];
     if (!userId) return;
@@ -257,6 +287,7 @@ export default function Kwiatki({ profile }) {
             const wybrani = uczestnicy.filter(u => u.wybrany);
             const czyJestemZgloszony = uczestnicy.some(u => u.id === profile.id && u.zgloszony);
             const czyJestemWybrany = uczestnicy.some(u => u.id === profile.id && u.wybrany);
+            const czyEdytowany = edycjaKwiatekId === kw.id;
 
             return (
               <div 
@@ -272,26 +303,53 @@ export default function Kwiatki({ profile }) {
                   boxShadow: '0 2px 4px rgba(0,0,0,0.02)' 
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
-                  <div>
-                    <h4 style={{ margin: '0 0 5px 0', color: '#831843', fontSize: '18px' }}>
-                      🌸 {kw.tytul}
-                    </h4>
-                    <p style={{ margin: '0 0 4px 0', fontSize: '14px', color: '#475569' }}>
-                      📅 <strong>{formatujDate(kw.data_czas)}</strong> | 📍 {kw.miejsce}
-                    </p>
-                    {kw.opis && <p style={{ margin: '8px 0 0 0', fontSize: '13px', color: '#4a044e' }}><strong>Uwagi:</strong> {kw.opis}</p>}
+                {czyZarzadzaKwiatkami && czyEdytowany ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', backgroundColor: '#fff', padding: '15px', borderRadius: '8px', border: '1px solid #fbcfe8', marginBottom: '15px' }}>
+                    <h4 style={{ margin: '0 0 5px 0', fontSize: '15px', color: '#9d174d' }}>Edycja wydarzenia:</h4>
+                    <input type="text" value={editTytul} onChange={(e) => setEditTytul(e.target.value)} placeholder="Tytuł / Okazja" style={inputStyle} />
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      <input type="date" value={editData} onChange={(e) => setEditData(e.target.value)} onClick={(e) => e.target.showPicker && e.target.showPicker()} style={{ flex: '1 1 120px', ...inputStyle }} />
+                      <input type="time" value={editGodzina} onChange={(e) => setEditGodzina(e.target.value)} onClick={(e) => e.target.showPicker && e.target.showPicker()} style={{ flex: '1 1 100px', ...inputStyle }} />
+                    </div>
+                    <input type="text" value={editMiejsce} onChange={(e) => setEditMiejsce(e.target.value)} placeholder="Miejsce" style={inputStyle} />
+                    <textarea value={editOpis} onChange={(e) => setEditOpis(e.target.value)} placeholder="Uwagi" rows="2" style={{ ...inputStyle, resize: 'vertical' }} />
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '5px' }}>
+                      <button onClick={() => zapiszEdycje(kw.id)} style={{ padding: '8px 14px', backgroundColor: '#10b981', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Zapisz 💾</button>
+                      <button onClick={anulujEdycje} style={{ padding: '8px 14px', backgroundColor: '#94a3b8', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Anuluj</button>
+                    </div>
                   </div>
+                ) : (
+                  <>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
+                      <div>
+                        <h4 style={{ margin: '0 0 5px 0', color: '#831843', fontSize: '18px' }}>
+                          🌸 {kw.tytul}
+                        </h4>
+                        <p style={{ margin: '0 0 4px 0', fontSize: '14px', color: '#475569' }}>
+                          📅 <strong>{formatujDate(kw.data_czas)}</strong> | 📍 {kw.miejsce}
+                        </p>
+                        {kw.opis && <p style={{ margin: '8px 0 0 0', fontSize: '13px', color: '#4a044e' }}><strong>Uwagi:</strong> {kw.opis}</p>}
+                      </div>
 
-                  {czyZarzadzaKwiatkami && (
-                    <button 
-                      onClick={() => usunWydarzenie(kw.id)} 
-                      style={{ padding: '5px 10px', backgroundColor: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}
-                    >
-                      Usuń wydarzenie 🗑️
-                    </button>
-                  )}
-                </div>
+                      {czyZarzadzaKwiatkami && (
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          <button 
+                            onClick={() => rozpocznijEdycje(kw)} 
+                            style={{ padding: '5px 10px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}
+                          >
+                            Edytuj ✏️
+                          </button>
+                          <button 
+                            onClick={() => usunWydarzenie(kw.id)} 
+                            style={{ padding: '5px 10px', backgroundColor: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}
+                          >
+                            Usuń 🗑️
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
 
                 {/* PASEK DEKLARACJI CZŁONKA */}
                 {profile.rola === 'członek' && (
