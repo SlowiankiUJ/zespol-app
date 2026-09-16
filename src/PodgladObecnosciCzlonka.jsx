@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import { pobierzStylSekcji } from './kolory';
-import TopFrekwencja from './TopFrekwencja'; // <-- Dodany import rankingu
+import TopFrekwencja from './TopFrekwencja';
 
-// Komponent do wyświetlania miniaturki zdjęcia
 const RenderAvatar = ({ url }) => (
   <div style={{ width: '24px', height: '24px', borderRadius: '50%', backgroundColor: '#e2e8f0', overflow: 'hidden', display: 'flex', justifyContent: 'center', alignItems: 'center', flexShrink: 0 }}>
     {url ? <img src={url} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: '12px' }}>👤</span>}
@@ -12,9 +11,9 @@ const RenderAvatar = ({ url }) => (
 
 export default function PodgladObecnosciCzlonka({ profile }) {
   const [proby, setProby] = useState([]);
-  const [czlonkowieGłówni, setCzlonkowieGłówni] = useState([]);
+  const [czlonkowieGlowni, setCzlonkowieGlowni] = useState([]);
   const [czlonkowieGoscinni, setCzlonkowieGoscinni] = useState([]);
-  const [deklaracje, setDeklaracje] = useState({}); // id_proby -> { id_uzytkownika: { planuje, usprawiedliwienie } }
+  const [deklaracje, setDeklaracje] = useState({});
 
   useEffect(() => {
     if (profile && profile.sekcja) {
@@ -23,11 +22,13 @@ export default function PodgladObecnosciCzlonka({ profile }) {
   }, [profile]);
 
   const pobierzDaneDlaSekcji = async () => {
-    // 1. Pobierz próby tylko dla sekcji członka
+    const glownaSekcja = profile.sekcja;
+
+    // 1. Próby tylko dla sekcji profilu
     const { data: probyData } = await supabase
       .from('proby')
       .select('*')
-      .eq('sekcja', profile.sekcja)
+      .eq('sekcja', glownaSekcja)
       .order('data_czas', { ascending: true });
 
     if (probyData) {
@@ -35,24 +36,24 @@ export default function PodgladObecnosciCzlonka({ profile }) {
       pobierzDeklaracjeIZasoby(probyData);
     }
 
-    // 2. Pobierz głównych członków z tej samej sekcji (wraz z awatarem i głosem)
+    // 2. Główni członkowie z tej samej sekcji
     const { data: czlonkowieData } = await supabase
       .from('profiles')
       .select('id, imie_nazwisko, sekcja, glos, avatar_url')
       .eq('status', 'zatwierdzony')
       .eq('rola', 'członek')
-      .eq('sekcja', profile.sekcja)
+      .eq('sekcja', glownaSekcja)
       .order('imie_nazwisko', { ascending: true });
 
     if (czlonkowieData) {
-      setCzlonkowieGłówni(czlonkowieData);
+      setCzlonkowieGlowni(czlonkowieData);
     }
 
-    // 3. Pobierz osoby z innych sekcji, które mają zatwierdzony gościnny dostęp do tej sekcji
+    // 3. Osoby gościnne z innych sekcji
     const { data: dodatkoweData } = await supabase
       .from('dodatkowe_sekcje')
       .select('id_uzytkownika')
-      .eq('sekcja', profile.sekcja)
+      .eq('sekcja', glownaSekcja)
       .eq('status', 'zatwierdzony');
 
     if (dodatkoweData && dodatkoweData.length > 0) {
@@ -94,7 +95,6 @@ export default function PodgladObecnosciCzlonka({ profile }) {
     setDeklaracje(mapa);
   };
 
-  // Funkcja pomocnicza do renderowania pojedynczego elementu listy osoby
   const renderujOsobe = (czlonek, info, isGosc = false) => {
     const statusPlanuje = info ? info.planuje : undefined;
     const usprawiedliwienie = info ? info.usprawiedliwienie : null;
@@ -126,7 +126,7 @@ export default function PodgladObecnosciCzlonka({ profile }) {
   return (
     <div style={{ marginTop: '20px', padding: '25px', border: '1px solid #e2e8f0', borderRadius: '12px', backgroundColor: '#ffffff', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
       
-      {/* SEKCJA: TOP FREKWENCJA */}
+      {/* RANKING FREKWENCJI (TYLKO Z OFICJALNYCH PRÓB) */}
       <TopFrekwencja />
 
       <h2 style={{ color: '#1e293b', marginBottom: '5px', fontSize: '20px', marginTop: '30px' }}>Sprawdź obecność w sekcji</h2>
@@ -147,11 +147,11 @@ export default function PodgladObecnosciCzlonka({ profile }) {
                 borderLeft: `6px solid ${stylSekcji.glowny}`, 
                 padding: '20px', 
                 backgroundColor: stylSekcji.jasny, 
-                borderRadius: '8px',
-                borderTop: `1px solid ${stylSekcji.border}`,
-                borderRight: `1px solid ${stylSekcji.border}`,
-                borderBottom: `1px solid ${stylSekcji.border}`,
-                boxShadow: '0 2px 4px rgba(0,0,0,0.01)'
+                borderRadius: '8px', 
+                borderTop: `1px solid ${stylSekcji.border}`, 
+                borderRight: `1px solid ${stylSekcji.border}`, 
+                borderBottom: `1px solid ${stylSekcji.border}`, 
+                boxShadow: '0 2px 4px rgba(0,0,0,0.01)' 
               }}>
                 <h4 style={{ margin: '0 0 5px 0', color: '#1e293b', fontSize: '16px' }}>
                   📅 {new Date(proba.data_czas).toLocaleString('pl-PL')}
@@ -163,10 +163,9 @@ export default function PodgladObecnosciCzlonka({ profile }) {
                 <div style={{ backgroundColor: '#ffffff', padding: '15px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
                   <h5 style={{ margin: '0 0 12px 0', fontSize: '14px', color: '#1e293b' }}>Lista obecności sekcji:</h5>
 
-                  {/* Jeśli sekcja to CHÓR -> Podział na Sopran, Alt, Tenor, Bas */}
                   {profile.sekcja === 'chór' ? (
                     ['Sopran', 'Alt', 'Tenor', 'Bas'].map(glosName => {
-                      const osobyGlosu = czlonkowieGłówni.filter(c => (c.glos || 'Sopran') === glosName);
+                      const osobyGlosu = czlonkowieGlowni.filter(c => (c.glos || 'Sopran') === glosName);
                       if (osobyGlosu.length === 0) return null;
 
                       return (
@@ -181,18 +180,19 @@ export default function PodgladObecnosciCzlonka({ profile }) {
                       );
                     })
                   ) : (
-                    // Standardowa lista dla innych sekcji
                     <div style={{ marginBottom: '15px' }}>
                       <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {czlonkowieGłówni.map(czlonek => renderujOsobe(czlonek, deklaracjeTejProby[czlonek.id], false))}
+                        {czlonkowieGlowni.map(czlonek => renderujOsobe(czlonek, deklaracjeTejProby[czlonek.id], false))}
                       </ul>
                     </div>
                   )}
 
-                  {/* Członkowie gościnni (na samym dole) */}
+                  {/* Członkowie gościnni */}
                   {czlonkowieGoscinni.length > 0 && (
                     <div style={{ marginTop: '15px', borderTop: '1px dashed #cbd5e1', paddingTop: '12px' }}>
-                      <p style={{ fontSize: '12px', fontWeight: 'bold', color: '#8b5cf6', margin: '0 0 6px 0', textTransform: 'uppercase' }}>Członkowie gościnni (dodatkowa sekcja):</p>
+                      <p style={{ fontSize: '12px', fontWeight: 'bold', color: '#8b5cf6', margin: '0 0 6px 0', textTransform: 'uppercase' }}>
+                        Członkowie gościnni (dodatkowa sekcja — bez wpływu na statystyki):
+                      </p>
                       <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         {czlonkowieGoscinni.map(gosc => renderujOsobe(gosc, deklaracjeTejProby[gosc.id], true))}
                       </ul>
@@ -200,7 +200,6 @@ export default function PodgladObecnosciCzlonka({ profile }) {
                   )}
 
                 </div>
-
               </div>
             );
           })}
