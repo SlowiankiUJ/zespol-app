@@ -37,17 +37,18 @@ export default function ListaCzlonkow({ profile }) {
     setLoading(true);
 
     try {
-      const glownaSekcjaOsoby = (wybranaOsoba.sekcja || '').trim().toLowerCase();
+      const glownaSekcjaClean = (wybranaOsoba.sekcja || '').trim().toLowerCase();
 
-      // 1. Pobieramy obecności i próby
-      const { data: obecnosciData } = await supabase
-        .from('deklaracje_obecnosci')
-        .select('obecny, id_proby')
-        .eq('id_uzytkownika', wybranaOsoba.id);
-
+      // 1. Pobieramy próby i deklaracje
       const { data: probyList } = await supabase
         .from('proby')
-        .select('*');
+        .select('id, data_czas, sekcja')
+        .order('data_czas', { ascending: false });
+
+      const { data: obecnosciData } = await supabase
+        .from('deklaracje_obecnosci')
+        .select('id_proby, obecny')
+        .eq('id_uzytkownika', wybranaOsoba.id);
 
       let ob = 0;
       let tot = 0;
@@ -55,44 +56,43 @@ export default function ListaCzlonkow({ profile }) {
       let liczbaKoncertow = 0;
       let liczbaWystepow = 0;
 
-      if (obecnosciData && probyList) {
-        const probaInfoMap = {};
-        probyList.forEach(p => {
-          if (p.id && p.data_czas) {
-            probaInfoMap[p.id] = { 
-              data_czas: p.data_czas, 
-              sekcja: (p.sekcja || '').trim().toLowerCase() 
-            };
+      if (probyList && obecnosciData) {
+        const dekMap = {};
+        obecnosciData.forEach(d => {
+          dekMap[String(d.id_proby)] = d.obecny;
+        });
+
+        // Bierzemy TYLKO oficjalne próby danej osoby (odrzucamy gościnne i generalne)
+        const wlasneProby = probyList.filter(p => {
+          const s = (p.sekcja || '').trim().toLowerCase();
+          return s === glownaSekcjaClean && s !== 'generalna';
+        });
+
+        // STREAK
+        for (const p of wlasneProby) {
+          const stan = dekMap[String(p.id)];
+          if (stan === true) {
+            aktualnyStreak++;
+          } else if (stan === false) {
+            break;
+          }
+        }
+
+        // FREKWENCJA
+        wlasneProby.forEach(p => {
+          const stan = dekMap[String(p.id)];
+          if (stan === true) {
+            ob++;
+            tot++;
+          } else if (stan === false) {
+            tot++;
           }
         });
-
-        // IGNORUJEMY WSZYSTKO CO NIE JEST JEGO GŁÓWNĄ SEKCJĄ!
-        const wpisyZUstalonaData = obecnosciData
-          .map(d => {
-            const info = probaInfoMap[d.id_proby];
-            return {
-              obecny: d.obecny,
-              data_proba: info ? info.data_czas : null,
-              sekcja: info ? info.sekcja : null
-            };
-          })
-          .filter(item => item.data_proba && item.sekcja === glownaSekcjaOsoby && (item.obecny === true || item.obecny === false));
-
-        wpisyZUstalonaData.forEach(item => {
-          if (item.obecny === true) { ob++; tot++; }
-          else if (item.obecny === false) { tot++; }
-        });
-
-        wpisyZUstalonaData.sort((a, b) => new Date(b.data_proba) - new Date(a.data_proba));
-        for (const wpis of wpisyZUstalonaData) {
-          if (wpis.obecny === true) aktualnyStreak++;
-          else if (wpis.obecny === false) break;
-        }
       }
 
       const procentFrekwencji = tot > 0 ? Math.round((ob / tot) * 100) : 0;
 
-      // 2. Pobieranie koncertów - TYLKO ze statusem zakwalifikowany === true
+      // 2. Koncerty - TYLKO zakwalifikowany === true
       const { data: dekKoncerty } = await supabase
         .from('deklaracje_koncerty')
         .select('id_koncertu, zakwalifikowany')
@@ -103,7 +103,7 @@ export default function ListaCzlonkow({ profile }) {
         liczbaKoncertow = zakwalifikowaneKoncerty.length;
       }
 
-      // 3. Pobieranie występów w obsadzie układów
+      // 3. Występy w obsadzie
       const { data: obsadaData } = await supabase
         .from('koncert_obsada')
         .select('id')

@@ -18,7 +18,9 @@ export default function Osiagniecia({ profile }) {
 
   const obliczOsiagniecia = async () => {
     try {
-      // 1. Pobieramy koncerty, w których użytkownik faktycznie ma status ZAKWALIFIKOWANY (true)
+      const glownaSekcjaClean = (profile.sekcja || '').trim().toLowerCase();
+
+      // 1. Koncerty - TYLKO z zakwalifikowaniem do składu
       const { data: dekKoncerty } = await supabase
         .from('deklaracje_koncerty')
         .select('id_koncertu, zakwalifikowany')
@@ -27,7 +29,7 @@ export default function Osiagniecia({ profile }) {
       const zakwalifikowaneKoncerty = dekKoncerty ? dekKoncerty.filter(d => d.zakwalifikowany === true) : [];
       const liczbaKoncertow = zakwalifikowaneKoncerty.length;
 
-      // 2. Pobieramy występy w obsadzie układów
+      // 2. Występy w obsadzie
       const { data: obsadaData } = await supabase
         .from('koncert_obsada')
         .select('id')
@@ -35,72 +37,60 @@ export default function Osiagniecia({ profile }) {
 
       const liczbaWystepow = obsadaData ? obsadaData.length : 0;
 
-      // 3. Pobieramy deklaracje obecności
-      const { data: obecnosciData } = await supabase
-        .from('deklaracje_obecnosci')
-        .select('obecny, id_proby')
-        .eq('id_uzytkownika', profile.id);
-
+      // 3. Próby i obecności
       const { data: probyList } = await supabase
         .from('proby')
-        .select('*');
+        .select('id, data_czas, sekcja')
+        .order('data_czas', { ascending: false });
+
+      const { data: obecnosciData } = await supabase
+        .from('deklaracje_obecnosci')
+        .select('id_proby, obecny')
+        .eq('id_uzytkownika', profile.id);
 
       let ma100PrzezMiesiac = false;
       let aktualnyStreak = 0;
 
-      if (obecnosciData && obecnosciData.length > 0 && probyList) {
-        const probaInfoMap = {};
-        probyList.forEach(p => {
-          if (p.id && p.data_czas) {
-            probaInfoMap[p.id] = {
-              data_czas: p.data_czas,
-              sekcja: p.sekcja
-            };
-          }
+      if (probyList && obecnosciData) {
+        const dekMap = {};
+        obecnosciData.forEach(d => {
+          dekMap[String(d.id_proby)] = d.obecny;
         });
 
-        // --- FREKWENCJA MIESIĘCZNA (TYLKO z prób GŁÓWNEJ sekcji) ---
+        // Bierzemy TYLKO próby własnej sekcji (odrzucamy gościnne i generalne)
+        const wlasneProby = probyList.filter(p => {
+          const s = (p.sekcja || '').trim().toLowerCase();
+          return s === glownaSekcjaClean && s !== 'generalna';
+        });
+
+        // STREAK
+        for (const p of wlasneProby) {
+          const stan = dekMap[String(p.id)];
+          if (stan === true) {
+            aktualnyStreak++;
+          } else if (stan === false) {
+            break;
+          }
+        }
+
+        // FREKWENCJA MIESIĘCZNA 100% (min. 3 próby w miesiącu)
         const miesiaceMap = {};
-        obecnosciData.forEach(item => {
-          const info = probaInfoMap[item.id_proby];
-          if (info && info.data_czas && info.sekcja === profile.sekcja) {
-            const miesiacKey = info.data_czas.substring(0, 7);
+        wlasneProby.forEach(p => {
+          const miesiacKey = p.data_czas.substring(0, 7);
+          const stan = dekMap[String(p.id)];
+          if (stan === true || stan === false) {
             if (!miesiaceMap[miesiacKey]) {
-              miesiaceMap[miesiacKey] = { obecne: 0, łącznie: 0 };
+              miesiaceMap[miesiacKey] = { obecne: 0, lacznie: 0 };
             }
-            miesiaceMap[miesiacKey].łącznie++;
-            if (item.obecny === true) {
-              miesiaceMap[miesiacKey].obecne++;
-            }
+            miesiaceMap[miesiacKey].lacznie++;
+            if (stan === true) miesiaceMap[miesiacKey].obecne++;
           }
         });
 
         for (const mKey of Object.keys(miesiaceMap)) {
           const m = miesiaceMap[mKey];
-          if (m.łącznie >= 3 && m.obecne === m.łącznie) {
+          if (m.lacznie >= 3 && m.obecne === m.lacznie) {
             ma100PrzezMiesiac = true;
-            break;
-          }
-        }
-
-        // --- STREAK PRÓB (TYLKO z prób GŁÓWNEJ sekcji, ignorujemy gościnne i generalne) ---
-        const wpisyZUstalonaData = obecnosciData
-          .map(d => {
-            const info = probaInfoMap[d.id_proby];
-            return {
-              obecny: d.obecny,
-              data_proba: info ? info.data_czas : null,
-              sekcja: info ? info.sekcja : null
-            };
-          })
-          .filter(item => item.data_proba && item.sekcja === profile.sekcja && (item.obecny === true || item.obecny === false));
-
-        wpisyZUstalonaData.sort((a, b) => new Date(b.data_proba) - new Date(a.data_proba));
-
-        for (const wpis of wpisyZUstalonaData) {
-          if (wpis.obecny === true) {
-            aktualnyStreak++;
-          } else if (wpis.obecny === false) {
             break;
           }
         }

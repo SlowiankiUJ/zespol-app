@@ -40,87 +40,73 @@ export default function MojaFrekwencja({ profile }) {
     }
   }, [profile]);
 
-  const normalizujSekcje = (sekcja) => {
-    if (!sekcja) return '';
-    return sekcja.toString().trim().toLowerCase();
-  };
-
   const pobierzMojaFrekwencje = async () => {
-    const glownaSekcja = normalizujSekcje(profile.sekcja);
+    try {
+      const glownaSekcjaClean = (profile.sekcja || '').trim().toLowerCase();
 
-    // 1. Pobieramy WSZYSTKIE próby z bazy, aby mieć pełną i niezawodną mapę sekcji każdej próby
-    const { data: wszystkieProby } = await supabase
-      .from('proby')
-      .select('*')
-      .order('data_czas', { ascending: true });
+      // Sekcje do wyświetlania w harmonogramie
+      let sekcjeWidoczne = [glownaSekcjaClean, 'generalna'];
+      const { data: dodatkowe } = await supabase
+        .from('dodatkowe_sekcje')
+        .select('sekcja')
+        .eq('id_uzytkownika', profile.id)
+        .eq('status', 'zatwierdzony');
 
-    const probyMap = {};
-    (wszystkieProby || []).forEach(p => {
-      probyMap[p.id] = p;
-    });
+      if (dodatkowe) {
+        dodatkowe.forEach(d => {
+          const s = (d.sekcja || '').trim().toLowerCase();
+          if (!sekcjeWidoczne.includes(s)) sekcjeWidoczne.push(s);
+        });
+      }
 
-    // 2. Sekcje, które użytkownik ma prawo w ogóle WIDZIEĆ na liście (główna + gościnne z dodatkowych sekcji + generalna)
-    let sekcjeDoWyswietlenia = [glownaSekcja, 'generalna'];
-    const { data: dodatkowe } = await supabase
-      .from('dodatkowe_sekcje')
-      .select('sekcja')
-      .eq('id_uzytkownika', profile.id)
-      .eq('status', 'zatwierdzony');
-      
-    if (dodatkowe) {
-      dodatkowe.forEach(d => {
-        const sNorm = normalizujSekcje(d.sekcja);
-        if (!sekcjeDoWyswietlenia.includes(sNorm)) sekcjeDoWyswietlenia.push(sNorm);
+      const { data: probyData } = await supabase
+        .from('proby')
+        .select('*')
+        .order('data_czas', { ascending: true });
+
+      const { data: dekData } = await supabase
+        .from('deklaracje_obecnosci')
+        .select('id_proby, planuje, usprawiedliwienie, obecny')
+        .eq('id_uzytkownika', profile.id);
+
+      const deklaracjeMap = {};
+      (dekData || []).forEach(d => {
+        deklaracjeMap[String(d.id_proby)] = d;
       });
-    }
 
-    // Filtrujemy próby do wyświetlenia na liście kalendarza
-    const probyDlaUzytkownika = (wszystkieProby || []).filter(p => 
-      sekcjeDoWyswietlenia.includes(normalizujSekcje(p.sekcja))
-    );
+      // LICZENIE STATYSTYK: TYLKO próby własnej sekcji
+      let ob = 0;
+      let nieob = 0;
+      let tot = 0;
 
-    // 3. Pobieramy wszystkie deklaracje obecności zalogowanego użytkownika
-    const { data: dekData } = await supabase
-      .from('deklaracje_obecnosci')
-      .select('id_proby, planuje, usprawiedliwienie, obecny')
-      .eq('id_uzytkownika', profile.id);
-
-    const mapa = {};
-    if (dekData) {
-      dekData.forEach(d => {
-        mapa[d.id_proby] = d;
-      });
-    }
-
-    // 4. KULMINACYJNE OBLICZANIE STATYSTYK:
-    // Tylko i wyłącznie próby, których sekcja w tabeli "proby" DOKŁADNIE odpowiada sekcji głównej użytkownika!
-    let ob = 0;
-    let nieob = 0;
-    let tot = 0;
-
-    if (dekData) {
-      dekData.forEach(d => {
-        const proba = probyMap[d.id_proby];
-        if (proba) {
-          const sekcjaProby = normalizujSekcje(proba.sekcja);
-
-          // BEZWZGLĘDNY WARUNEK: Musi to być oficjalna sekcja użytkownika (odrzucamy gościnne i generalną)
-          if (sekcjaProby === glownaSekcja && sekcjaProby !== 'generalna') {
-            if (d.obecny === true) {
+      (probyData || []).forEach(proba => {
+        const s = (proba.sekcja || '').trim().toLowerCase();
+        // Sprawdzamy wyłącznie próby należące do oficjalnej sekcji użytkownika
+        if (s === glownaSekcjaClean && s !== 'generalna') {
+          const dek = deklaracjeMap[String(proba.id)];
+          if (dek) {
+            if (dek.obecny === true) {
               ob++;
               tot++;
-            } else if (d.obecny === false) {
+            } else if (dek.obecny === false) {
               nieob++;
               tot++;
             }
           }
         }
       });
-    }
 
-    setProby(probyDlaUzytkownika);
-    setMojeObecnosci(mapa);
-    setStatystyki({ obecny: ob, nieobecny: nieob, total: tot });
+      // Filtrujemy próby do widoku listy miesięcznej
+      const widoczneProby = (probyData || []).filter(p => 
+        sekcjeWidoczne.includes((p.sekcja || '').trim().toLowerCase())
+      );
+
+      setProby(widoczneProby);
+      setMojeObecnosci(deklaracjeMap);
+      setStatystyki({ obecny: ob, nieobecny: nieob, total: tot });
+    } catch (err) {
+      console.error('Błąd pobierania frekwencji:', err);
+    }
   };
 
   const procentFrekwencji = statystyki.total > 0 
@@ -151,16 +137,16 @@ export default function MojaFrekwencja({ profile }) {
     });
   };
 
-  const glownaSekcjaUzytkownika = profile?.sekcja ? profile.sekcja.trim().toLowerCase() : '';
+  const glownaSekcjaClean = (profile?.sekcja || '').trim().toLowerCase();
 
   return (
     <div style={{ marginTop: '20px', padding: '25px', border: '1px solid #e2e8f0', borderRadius: '12px', backgroundColor: '#ffffff', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
       <h2 style={{ color: '#1e293b', marginBottom: '5px', fontSize: '20px' }}>Moja Frekwencja i Rozliczenia 📊</h2>
       <p style={{ margin: '0 0 20px 0', fontSize: '13px', color: '#64748b' }}>
-        Twoja sekcja macierzysta: <strong style={{ textTransform: 'uppercase', color: '#8b5cf6' }}>{profile.sekcja}</strong>. Tylko próby tej sekcji budują Twoją oficjalną frekwencję.
+        Sekcja macierzysta: <strong style={{ textTransform: 'uppercase', color: '#8b5cf6' }}>{profile.sekcja}</strong>. Próby innych sekcji (udział gościnny) nie wpływają na Twoją oficjalną frekwencję.
       </p>
       
-      {/* KAFELKI ZE STATYSTYKAMI */}
+      {/* STATYSTYKI */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '15px', marginBottom: '30px' }}>
         <div style={{ padding: '20px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #cbd5e1', textAlign: 'center' }}>
           <p style={{ margin: '0 0 5px 0', fontSize: '13px', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase' }}>Twój wynik</p>
@@ -178,7 +164,7 @@ export default function MojaFrekwencja({ profile }) {
         </div>
       </div>
 
-      <h3 style={{ margin: '0 0 15px 0', fontSize: '16px', color: '#334155' }}>Rozliczenie poszczególnych prób ({proby.length}):</h3>
+      <h3 style={{ margin: '0 0 15px 0', fontSize: '16px', color: '#334155' }}>Rozliczenie prób ({proby.length}):</h3>
 
       {Object.keys(pogrupowaneProby).length === 0 ? (
         <p style={{ color: '#718096' }}>Nie masz przypisanych żadnych prób.</p>
@@ -202,12 +188,12 @@ export default function MojaFrekwencja({ profile }) {
                   <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '15px', backgroundColor: '#ffffff' }}>
                     {grupa.proby.map(proba => {
                       const stylSekcji = pobierzStylSekcji(proba.sekcja);
-                      const mojeDane = mojeObecnosci[proba.id] || {};
+                      const mojeDane = mojeObecnosci[String(proba.id)] || {};
                       const { planuje, usprawiedliwienie, obecny } = mojeDane;
                       const czyMinela = new Date(proba.data_czas) < new Date();
                       
-                      const sekcjaProbyNorm = (proba.sekcja || '').trim().toLowerCase();
-                      const czyGoscinna = sekcjaProbyNorm !== glownaSekcjaUzytkownika && sekcjaProbyNorm !== 'generalna';
+                      const s = (proba.sekcja || '').trim().toLowerCase();
+                      const czyGoscinna = s !== glownaSekcjaClean && s !== 'generalna';
 
                       return (
                         <div key={proba.id} style={{ 
@@ -222,7 +208,7 @@ export default function MojaFrekwencja({ profile }) {
                               </span>
                               {czyGoscinna && (
                                 <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 'bold', backgroundColor: '#e2e8f0', color: '#475569', border: '1px solid #cbd5e1' }}>
-                                  👁️ Próba gościnna (nie wpływa na statystyki)
+                                  👁️ Udział gościnny (nie wlicza się do statystyk)
                                 </span>
                               )}
                             </div>

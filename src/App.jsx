@@ -30,7 +30,7 @@ export default function App() {
         });
         OneSignal.Slidedown.promptPush();
       } catch (error) {
-        console.error('Błąd inicjalizacji OneSignal:', error);
+        console.error('Błąd OneSignal:', error);
       }
     };
     runOneSignal();
@@ -99,57 +99,43 @@ export default function App() {
 
   const obliczStreak = async (userId, sekcjaGlowna) => {
     try {
-      const { data: deklaracje, error: dekError } = await supabase
+      if (!sekcjaGlowna) return;
+      const glownaSekcjaClean = sekcjaGlowna.trim().toLowerCase();
+
+      // Pobieramy próby i deklaracje
+      const { data: probyList } = await supabase
+        .from('proby')
+        .select('id, data_czas, sekcja')
+        .order('data_czas', { ascending: false });
+
+      const { data: deklaracje } = await supabase
         .from('deklaracje_obecnosci')
-        .select('*')
+        .select('id_proby, obecny')
         .eq('id_uzytkownika', userId);
 
-      if (dekError || !deklaracje || deklaracje.length === 0) {
+      if (!probyList || !deklaracje) {
         setStreak(0);
         return;
       }
 
-      const { data: probyList, error: probError } = await supabase
-        .from('proby')
-        .select('*');
-
-      if (probError || !probyList) {
-        setStreak(0);
-        return;
-      }
-
-      const probaInfoMap = {};
-      probyList.forEach(p => {
-        if (p.id && p.data_czas) {
-          probaInfoMap[p.id] = { data_czas: p.data_czas, sekcja: p.sekcja };
-        }
+      const dekMap = {};
+      deklaracje.forEach(d => {
+        dekMap[String(d.id_proby)] = d.obecny;
       });
 
-      // TYLKO próby głównej sekcji (odrzucamy gościnne oraz generalne)
-      const wpisyZUstalonaData = deklaracje
-        .map(d => {
-          const info = probaInfoMap[d.id_proby];
-          return {
-            obecny: d.obecny,
-            data_proba: info ? info.data_czas : null,
-            sekcja: info ? info.sekcja : null
-          };
-        })
-        .filter(item => item.data_proba && item.sekcja === sekcjaGlowna && (item.obecny === true || item.obecny === false));
-
-      if (wpisyZUstalonaData.length === 0) {
-        setStreak(0);
-        return;
-      }
-
-      wpisyZUstalonaData.sort((a, b) => new Date(b.data_proba) - new Date(a.data_proba));
+      // Bierzemy TYLKO próby głównej sekcji (odrzucamy gościnne i próbę generalną)
+      const wlasneProby = probyList.filter(p => {
+        const s = (p.sekcja || '').trim().toLowerCase();
+        return s === glownaSekcjaClean && s !== 'generalna';
+      });
 
       let aktualnyStreak = 0;
-      for (const wpis of wpisyZUstalonaData) {
-        if (wpis.obecny === true) {
+      for (const p of wlasneProby) {
+        const stan = dekMap[String(p.id)];
+        if (stan === true) {
           aktualnyStreak++;
-        } else if (wpis.obecny === false) {
-          break; 
+        } else if (stan === false) {
+          break; // Koniec streaka przy pierwszej nieobecności na własnej próbie
         }
       }
 
@@ -177,8 +163,7 @@ export default function App() {
       <div style={{ maxWidth: '500px', margin: '80px auto', padding: '30px', textAlign: 'center', backgroundColor: '#fff', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', fontFamily: 'sans-serif' }}>
         <h2 style={{ color: '#d97706', marginBottom: '15px' }}>Konto oczekuje na zatwierdzenie ⏳</h2>
         <p style={{ color: '#4b5563', lineHeight: '1.6' }}>
-          Witaj, <strong>{profile.imie_nazwisko}</strong>! Twoje konto zostało utworzone i czeka na akceptację przez kierownictwo zespołu. 
-          Po zatwierdzeniu uzyskasz pełny dostęp do harmonogramu i prób.
+          Witaj, <strong>{profile.imie_nazwisko}</strong>! Twoje konto zostało utworzone i czeka na akceptację przez kierownictwo zespołu.
         </p>
         <button 
           onClick={() => supabase.auth.signOut()}
