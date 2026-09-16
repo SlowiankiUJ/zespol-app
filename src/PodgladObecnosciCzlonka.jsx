@@ -14,6 +14,7 @@ export default function PodgladObecnosciCzlonka({ profile }) {
   const [czlonkowieGlowni, setCzlonkowieGlowni] = useState([]);
   const [czlonkowieGoscinni, setCzlonkowieGoscinni] = useState([]);
   const [deklaracje, setDeklaracje] = useState({});
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (profile && profile.sekcja) {
@@ -22,54 +23,70 @@ export default function PodgladObecnosciCzlonka({ profile }) {
   }, [profile]);
 
   const pobierzDaneDlaSekcji = async () => {
-    const glownaSekcja = profile.sekcja;
+    setLoading(true);
+    try {
+      const glownaSekcja = profile.sekcja;
 
-    // 1. Próby tylko dla sekcji profilu
-    const { data: probyData } = await supabase
-      .from('proby')
-      .select('*')
-      .eq('sekcja', glownaSekcja)
-      .order('data_czas', { ascending: true });
+      // Obliczamy początek bieżącego dnia (godzina 00:00:00), aby próby z dzisiaj były nadal widoczne, 
+      // a wszystkie starsze/minione próby zostały zarchiwizowane z widoku członka.
+      const dzis = new Date();
+      dzis.setHours(0, 0, 0, 0);
+      const isoPoczatekDzis = dzis.toISOString();
 
-    if (probyData) {
-      setProby(probyData);
-      pobierzDeklaracjeIZasoby(probyData);
-    }
+      // 1. Próby tylko dla sekcji profilu ORAZ wyłącznie aktualne/nadchodzące (od dzisiaj w przód)
+      const { data: probyData, error: probyError } = await supabase
+        .from('proby')
+        .select('*')
+        .eq('sekcja', glownaSekcja)
+        .gte('data_czas', isoPoczatekDzis)
+        .order('data_czas', { ascending: true });
 
-    // 2. Główni członkowie z tej samej sekcji
-    const { data: czlonkowieData } = await supabase
-      .from('profiles')
-      .select('id, imie_nazwisko, sekcja, glos, avatar_url')
-      .eq('status', 'zatwierdzony')
-      .eq('rola', 'członek')
-      .eq('sekcja', glownaSekcja)
-      .order('imie_nazwisko', { ascending: true });
+      if (probyError) throw probyError;
 
-    if (czlonkowieData) {
-      setCzlonkowieGlowni(czlonkowieData);
-    }
+      if (probyData) {
+        setProby(probyData);
+        pobierzDeklaracjeIZasoby(probyData);
+      }
 
-    // 3. Osoby gościnne z innych sekcji
-    const { data: dodatkoweData } = await supabase
-      .from('dodatkowe_sekcje')
-      .select('id_uzytkownika')
-      .eq('sekcja', glownaSekcja)
-      .eq('status', 'zatwierdzony');
-
-    if (dodatkoweData && dodatkoweData.length > 0) {
-      const ids = dodatkoweData.map(d => d.id_uzytkownika);
-      const { data: goscieData } = await supabase
+      // 2. Główni członkowie z tej samej sekcji
+      const { data: czlonkowieData } = await supabase
         .from('profiles')
         .select('id, imie_nazwisko, sekcja, glos, avatar_url')
-        .in('id', ids)
         .eq('status', 'zatwierdzony')
+        .eq('rola', 'członek')
+        .eq('sekcja', glownaSekcja)
         .order('imie_nazwisko', { ascending: true });
 
-      if (goscieData) {
-        setCzlonkowieGoscinni(goscieData);
+      if (czlonkowieData) {
+        setCzlonkowieGlowni(czlonkowieData);
       }
-    } else {
-      setCzlonkowieGoscinni([]);
+
+      // 3. Osoby gościnne z innych sekcji
+      const { data: dodatkoweData } = await supabase
+        .from('dodatkowe_sekcje')
+        .select('id_uzytkownika')
+        .eq('sekcja', glownaSekcja)
+        .eq('status', 'zatwierdzony');
+
+      if (dodatkoweData && dodatkoweData.length > 0) {
+        const ids = dodatkoweData.map(d => d.id_uzytkownika);
+        const { data: goscieData } = await supabase
+          .from('profiles')
+          .select('id, imie_nazwisko, sekcja, glos, avatar_url')
+          .in('id', ids)
+          .eq('status', 'zatwierdzony')
+          .order('imie_nazwisko', { ascending: true });
+
+        if (goscieData) {
+          setCzlonkowieGoscinni(goscieData);
+        }
+      } else {
+        setCzlonkowieGoscinni([]);
+      }
+    } catch (err) {
+      console.error('Błąd pobierania danych w PodgladObecnosciCzlonka:', err);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -85,9 +102,16 @@ export default function PodgladObecnosciCzlonka({ profile }) {
     const mapa = {};
     if (dekData) {
       dekData.forEach(d => {
+        let status = d.status_deklaracji;
+        if (!status) {
+          if (d.planuje === true) status = 'obecny';
+          else if (d.planuje === false) status = 'nieobecny';
+        }
+
         if (!mapa[d.id_proby]) mapa[d.id_proby] = {};
         mapa[d.id_proby][d.id_uzytkownika] = {
           planuje: d.planuje,
+          status_deklaracji: status,
           usprawiedliwienie: d.usprawiedliwienie
         };
       });
@@ -96,7 +120,7 @@ export default function PodgladObecnosciCzlonka({ profile }) {
   };
 
   const renderujOsobe = (czlonek, info, isGosc = false) => {
-    const statusPlanuje = info ? info.planuje : undefined;
+    const status = info ? info.status_deklaracji : (info?.planuje === true ? 'obecny' : info?.planuje === false ? 'nieobecny' : undefined);
     const usprawiedliwienie = info ? info.usprawiedliwienie : null;
 
     return (
@@ -108,11 +132,22 @@ export default function PodgladObecnosciCzlonka({ profile }) {
           {czlonek.id === profile.id && ' (Ty)'}
         </span>
         <div>
-          {statusPlanuje === true ? (
-            <span style={{ color: '#10b981', fontWeight: 'bold', fontSize: '13px', backgroundColor: '#d1fae5', padding: '3px 10px', borderRadius: '12px' }}>Będzie 👍</span>
-          ) : statusPlanuje === false ? (
+          {status === 'spozniony' ? (
             <div style={{ textAlign: 'right' }}>
-              <span style={{ color: '#ef4444', fontWeight: 'bold', fontSize: '13px', backgroundColor: '#fee2e2', padding: '3px 10px', borderRadius: '12px', display: 'inline-block' }}>Nie będzie 👎</span>
+              <span style={{ color: '#b45309', fontWeight: 'bold', fontSize: '13px', backgroundColor: '#fef3c7', padding: '3px 10px', borderRadius: '12px', display: 'inline-block', border: '1px solid #fde68a' }}>
+                Spóźni się ⏰
+              </span>
+              {usprawiedliwienie && <div style={{ fontSize: '11px', color: '#92400e', fontStyle: 'italic', marginTop: '3px' }}>Powód: „{usprawiedliwienie}”</div>}
+            </div>
+          ) : status === 'obecny' ? (
+            <span style={{ color: '#10b981', fontWeight: 'bold', fontSize: '13px', backgroundColor: '#d1fae5', padding: '3px 10px', borderRadius: '12px' }}>
+              Będzie 👍
+            </span>
+          ) : status === 'nieobecny' ? (
+            <div style={{ textAlign: 'right' }}>
+              <span style={{ color: '#ef4444', fontWeight: 'bold', fontSize: '13px', backgroundColor: '#fee2e2', padding: '3px 10px', borderRadius: '12px', display: 'inline-block' }}>
+                Nie będzie 👎
+              </span>
               {usprawiedliwienie && <div style={{ fontSize: '11px', color: '#b91c1c', fontStyle: 'italic', marginTop: '3px' }}>Powód: „{usprawiedliwienie}”</div>}
             </div>
           ) : (
@@ -129,13 +164,25 @@ export default function PodgladObecnosciCzlonka({ profile }) {
       {/* RANKING FREKWENCJI (TYLKO Z OFICJALNYCH PRÓB) */}
       <TopFrekwencja />
 
-      <h2 style={{ color: '#1e293b', marginBottom: '5px', fontSize: '20px', marginTop: '30px' }}>Sprawdź obecność w sekcji</h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginTop: '30px', marginBottom: '5px' }}>
+        <h2 style={{ color: '#1e293b', margin: 0, fontSize: '20px' }}>Sprawdź obecność w sekcji</h2>
+        <span style={{ fontSize: '12px', color: '#0284c7', backgroundColor: '#e0f2fe', padding: '4px 10px', borderRadius: '12px', fontWeight: 'bold' }}>
+          Tylko aktualne i nadchodzące próby ⏳
+        </span>
+      </div>
+
       <p style={{ color: '#64748b', fontSize: '14px', marginBottom: '20px' }}>
         Podgląd deklaracji obecności Twojej sekcji: <strong style={{ textTransform: 'uppercase', color: '#0f172a' }}>{profile.sekcja}</strong>
       </p>
 
-      {proby.length === 0 ? (
-        <p style={{ color: '#718096' }}>Brak zaplanowanych prób dla Twojej sekcji.</p>
+      {loading ? (
+        <p style={{ color: '#64748b', fontSize: '14px' }}>Ładowanie aktualnych prób...</p>
+      ) : proby.length === 0 ? (
+        <div style={{ padding: '20px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px dashed #cbd5e1', textAlign: 'center' }}>
+          <p style={{ color: '#64748b', margin: 0, fontSize: '14px' }}>
+            Brak nadchodzących prób dla Twojej sekcji. Minione próby zostały zarchiwizowane. 📂
+          </p>
+        </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '25px' }}>
           {proby.map(proba => {
