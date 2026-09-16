@@ -37,6 +37,18 @@ export default function ListaCzlonkow({ profile }) {
     setLoading(true);
 
     try {
+      // POBIERAMY SEKCJE GŁÓWNĄ I DODATKOWE WYBRANEGO CZŁONKA
+      let mojeSekcje = [wybranaOsoba.sekcja];
+      const { data: dodatkowe } = await supabase
+        .from('dodatkowe_sekcje')
+        .select('sekcja')
+        .eq('id_uzytkownika', wybranaOsoba.id)
+        .eq('status', 'zatwierdzony');
+
+      if (dodatkowe) {
+        dodatkowe.forEach(d => mojeSekcje.push(d.sekcja));
+      }
+
       // 1. Obliczanie frekwencji i streaka
       const { data: obecnosciData } = await supabase
         .from('deklaracje_obecnosci')
@@ -61,6 +73,7 @@ export default function ListaCzlonkow({ profile }) {
           }
         });
 
+        // IGNORUJEMY OBECNOŚCI GOŚCINNE I PRÓBY GENERALNE
         const wpisyZUstalonaData = obecnosciData
           .map(d => {
             const info = probaInfoMap[d.id_proby];
@@ -70,7 +83,7 @@ export default function ListaCzlonkow({ profile }) {
               sekcja: info ? info.sekcja : null
             };
           })
-          .filter(item => item.data_proba && item.sekcja !== 'generalna' && (item.obecny === true || item.obecny === false));
+          .filter(item => item.data_proba && item.sekcja !== 'generalna' && mojeSekcje.includes(item.sekcja) && (item.obecny === true || item.obecny === false));
 
         wpisyZUstalonaData.forEach(item => {
           if (item.obecny === true) { ob++; tot++; }
@@ -90,11 +103,11 @@ export default function ListaCzlonkow({ profile }) {
       const { data: dekKoncerty } = await supabase
         .from('deklaracje_koncerty')
         .select('id_koncertu, zakwalifikowany')
-        .eq('id_uzytkownika', wybranaOsoba.id)
-        .eq('zakwalifikowany', true);
+        .eq('id_uzytkownika', wybranaOsoba.id);
 
       if (dekKoncerty) {
-        liczbaKoncertow = dekKoncerty.length;
+        const zakwalifikowaneKoncerty = dekKoncerty.filter(d => d.zakwalifikowany === true);
+        liczbaKoncertow = zakwalifikowaneKoncerty.length;
       }
 
       // 3. Pobieranie występów w obsadzie układów

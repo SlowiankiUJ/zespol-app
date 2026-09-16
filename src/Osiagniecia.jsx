@@ -18,8 +18,19 @@ export default function Osiagniecia({ profile }) {
 
   const obliczOsiagniecia = async () => {
     try {
-      // 1. Pobieramy wszystkie deklaracje koncertów użytkownika i filtrujemy w JS, 
-      // żeby mieć 100% pewności, że liczy się tylko zakwalifikowany === true
+      // POBIERAMY SEKCJE GŁÓWNĄ I DODATKOWE
+      let mojeSekcje = [profile.sekcja];
+      const { data: dodatkowe } = await supabase
+        .from('dodatkowe_sekcje')
+        .select('sekcja')
+        .eq('id_uzytkownika', profile.id)
+        .eq('status', 'zatwierdzony');
+        
+      if (dodatkowe) {
+        dodatkowe.forEach(d => mojeSekcje.push(d.sekcja));
+      }
+
+      // 1. Pobieramy koncerty, w których użytkownik faktycznie ma status ZAKWALIFIKOWANY (true)
       const { data: dekKoncerty } = await supabase
         .from('deklaracje_koncerty')
         .select('id_koncertu, zakwalifikowany')
@@ -36,7 +47,7 @@ export default function Osiagniecia({ profile }) {
 
       const liczbaWystepow = obsadaData ? obsadaData.length : 0;
 
-      // 3. Pobieramy deklaracje obecności do frekwencji miesięcznej oraz streaka
+      // 3. Pobieramy deklaracje obecności
       const { data: obecnosciData } = await supabase
         .from('deklaracje_obecnosci')
         .select('obecny, id_proby')
@@ -60,11 +71,12 @@ export default function Osiagniecia({ profile }) {
           }
         });
 
-        // --- FREKWENCJA MIESIĘCZNA ---
+        // --- FREKWENCJA MIESIĘCZNA (tylko ze swoich sekcji) ---
         const miesiaceMap = {};
         obecnosciData.forEach(item => {
           const info = probaInfoMap[item.id_proby];
-          if (info && info.data_czas) {
+          // IGNORUJEMY PRÓBY GOŚCINNE ORAZ GENERALNE
+          if (info && info.data_czas && info.sekcja !== 'generalna' && mojeSekcje.includes(info.sekcja)) {
             const miesiacKey = info.data_czas.substring(0, 7);
             if (!miesiaceMap[miesiacKey]) {
               miesiaceMap[miesiacKey] = { obecne: 0, łącznie: 0 };
@@ -84,7 +96,7 @@ export default function Osiagniecia({ profile }) {
           }
         }
 
-        // --- STREAK PRÓB (Z pominięciem prób generalnych) ---
+        // --- STREAK PRÓB (Z pominięciem prób gościnnych i generalnych) ---
         const wpisyZUstalonaData = obecnosciData
           .map(d => {
             const info = probaInfoMap[d.id_proby];
@@ -94,16 +106,15 @@ export default function Osiagniecia({ profile }) {
               sekcja: info ? info.sekcja : null
             };
           })
-          .filter(item => item.data_proba && item.sekcja !== 'generalna' && (item.obecny === true || item.obecny === false));
+          .filter(item => item.data_proba && item.sekcja !== 'generalna' && mojeSekcje.includes(item.sekcja) && (item.obecny === true || item.obecny === false));
 
-        // Sortujemy od najnowszej do najstarszej próby
         wpisyZUstalonaData.sort((a, b) => new Date(b.data_proba) - new Date(a.data_proba));
 
         for (const wpis of wpisyZUstalonaData) {
           if (wpis.obecny === true) {
             aktualnyStreak++;
           } else if (wpis.obecny === false) {
-            break; // Przerwanie streaka przy pierwszej nieobecności
+            break;
           }
         }
       }
@@ -121,11 +132,9 @@ export default function Osiagniecia({ profile }) {
     }
   };
 
-  // Definicja odznak i medali z grafikami/ikonami
   const generujOdznaki = () => {
     const odznaki = [];
 
-    // --- STREAK PRÓB Z RZĘDU (5, 15, 30, 50, 100) ---
     const progiStreaka = [
       { prog: 5, tytul: 'Rozgrzewka w tańcu', opis: 'Starasz się, oby tak dalej! Pęcherze na stopach powoli stają się Twoimi najlepszymi przyjaciółmi.', ikona: '👟' },
       { prog: 15, tytul: 'Żelazna kondycja', opis: 'Przeżyłeś 15 prób z rzędu. Kierownik zaczyna się zastanawiać, czy Ty w ogóle sypiasz w domu.', ikona: '🪵' },
@@ -146,7 +155,6 @@ export default function Osiagniecia({ profile }) {
       });
     });
 
-    // --- FREKWENCJA ---
     odznaki.push({
       tytuł: 'Perfekcjonista miesiąca',
       opis: 'Utrzymuj 100% frekwencji na próbach przez cały miesiąc (min. 3 próby).',
@@ -156,7 +164,6 @@ export default function Osiagniecia({ profile }) {
       kategoria: 'Frekwencja'
     });
 
-    // --- KAMIENIE MILOWE - KONCERTY ---
     const progiKoncertow = [1, 5, 10, 25, 50, 100];
     progiKoncertow.forEach(prog => {
       const aktualny = Math.min(staty.koncertyUdział, prog);
@@ -170,7 +177,6 @@ export default function Osiagniecia({ profile }) {
       });
     });
 
-    // --- ILOŚĆ WYSTĘPÓW W PROGRAMIE ---
     const progiWystepow = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
     progiWystepow.forEach(prog => {
       const aktualny = Math.min(staty.występyObsada, prog);

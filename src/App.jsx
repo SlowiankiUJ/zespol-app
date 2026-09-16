@@ -21,7 +21,6 @@ export default function App() {
   const [aktywnaZakladka, setAktywnaZakladka] = useState('harmonogram');
   const [streak, setStreak] = useState(0);
 
-  // INICJALIZACJA ONESIGNAL (Powiadomienia Push)
   useEffect(() => {
     const runOneSignal = async () => {
       try {
@@ -37,7 +36,6 @@ export default function App() {
     runOneSignal();
   }, []);
 
-  // OBSŁUGA SESJI I LOGOWANIA
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -57,7 +55,6 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // SUPABASE REALTIME: Automatyczna aktualizacja streaka, gdy zmienią się deklaracje obecności
   useEffect(() => {
     if (!profile) return;
 
@@ -72,7 +69,7 @@ export default function App() {
           filter: `id_uzytkownika=eq.${profile.id}`
         },
         () => {
-          obliczStreak(profile.id);
+          obliczStreak(profile.id, profile.sekcja);
         }
       )
       .subscribe();
@@ -92,7 +89,7 @@ export default function App() {
 
       if (error) throw error;
       setProfile(data);
-      obliczStreak(userId);
+      obliczStreak(userId, data.sekcja);
     } catch (error) {
       console.error('Błąd pobierania profilu:', error.message);
     } finally {
@@ -100,10 +97,21 @@ export default function App() {
     }
   };
 
-  // FUNKCJA OBLICZANIA STREAKA (Z pominięciem prób generalnych)
-  const obliczStreak = async (userId) => {
+  // FUNKCJA OBLICZANIA STREAKA (Z uwzględnieniem sekcji i dodatkowych sekcji)
+  const obliczStreak = async (userId, sekcjaGlowna) => {
     try {
-      // 1. Pobieramy deklaracje obecności użytkownika
+      let mojeSekcje = [sekcjaGlowna];
+      
+      const { data: dodatkowe } = await supabase
+        .from('dodatkowe_sekcje')
+        .select('sekcja')
+        .eq('id_uzytkownika', userId)
+        .eq('status', 'zatwierdzony');
+
+      if (dodatkowe) {
+        dodatkowe.forEach(d => mojeSekcje.push(d.sekcja));
+      }
+
       const { data: deklaracje, error: dekError } = await supabase
         .from('deklaracje_obecnosci')
         .select('*')
@@ -114,7 +122,6 @@ export default function App() {
         return;
       }
 
-      // 2. Pobieramy listę prób z tabeli "proby"
       const { data: probyList, error: probError } = await supabase
         .from('proby')
         .select('*');
@@ -124,18 +131,14 @@ export default function App() {
         return;
       }
 
-      // Tworzymy mapę prób po ID (przechowując datę oraz sekcję)
       const probaInfoMap = {};
       probyList.forEach(p => {
         if (p.id && p.data_czas) {
-          probaInfoMap[p.id] = {
-            data_czas: p.data_czas,
-            sekcja: p.sekcja
-          };
+          probaInfoMap[p.id] = { data_czas: p.data_czas, sekcja: p.sekcja };
         }
       });
 
-      // 3. Łączymy deklaracje z próbami i odrzucamy próby generalne
+      // Filtrujemy tylko obecności pasujące do głównej sekcji i zatwierdzonych dodatkowych
       const wpisyZUstalonaData = deklaracje
         .map(d => {
           const info = probaInfoMap[d.id_proby];
@@ -145,23 +148,21 @@ export default function App() {
             sekcja: info ? info.sekcja : null
           };
         })
-        .filter(item => item.data_proba && item.sekcja !== 'generalna' && (item.obecny === true || item.obecny === false));
+        .filter(item => item.data_proba && item.sekcja !== 'generalna' && mojeSekcje.includes(item.sekcja) && (item.obecny === true || item.obecny === false));
 
       if (wpisyZUstalonaData.length === 0) {
         setStreak(0);
         return;
       }
 
-      // 4. Sortujemy próby od najnowszej do najstarszej
       wpisyZUstalonaData.sort((a, b) => new Date(b.data_proba) - new Date(a.data_proba));
 
-      // 5. Liczymy passę (streak)
       let aktualnyStreak = 0;
       for (const wpis of wpisyZUstalonaData) {
         if (wpis.obecny === true) {
           aktualnyStreak++;
         } else if (wpis.obecny === false) {
-          break; // Przerwanie passy przy pierwszej nieobecności
+          break; 
         }
       }
 
@@ -204,8 +205,6 @@ export default function App() {
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#f1f5f9', fontFamily: 'sans-serif', paddingBottom: '40px' }}>
-      
-      {/* Górny pasek nawigacyjny / Nagłówek */}
       <header style={{ backgroundColor: '#1e293b', color: 'white', padding: '15px 30px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
         <div>
           <h1 style={{ margin: 0, fontSize: '20px', letterSpacing: '0.5px' }}>ZPiT UJ „Słowianki” 🌾</h1>
@@ -218,7 +217,6 @@ export default function App() {
             )}
           </p>
         </div>
-
         <button 
           onClick={() => supabase.auth.signOut()}
           style={{ padding: '8px 14px', backgroundColor: '#334155', color: 'white', border: '1px solid #475569', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}
@@ -227,9 +225,7 @@ export default function App() {
         </button>
       </header>
 
-      {/* Pasek zakładek menu */}
       <nav style={{ backgroundColor: '#ffffff', borderBottom: '1px solid #cbd5e1', padding: '10px 30px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-        
         {profile?.rola === 'członek' && (
           <>
             <button onClick={() => setAktywnaZakladka('harmonogram')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'harmonogram' ? '#8b5cf6' : '#f8fafc', color: aktywnaZakladka === 'harmonogram' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>📅 Harmonogram prób</button>
@@ -265,7 +261,6 @@ export default function App() {
         )}
       </nav>
 
-      {/* Główna zawartość */}
       <main style={{ maxWidth: '1000px', margin: '20px auto', padding: '0 20px' }}>
         {aktywnaZakladka === 'harmonogram' && <Harmonogram profile={profile} />}
         {aktywnaZakladka === 'skaner_qr' && <SkanerQR profile={profile} />}
