@@ -29,6 +29,7 @@ export default function ZarzadzanieCzlonkami() {
   const [nowaSekcja, setNowaSekcja] = useState('');
   const [nowyGlos, setNowyGlos] = useState('');
   const [nowaRola, setNowaRola] = useState('');
+  const [czyInspektorEdycja, setCzyInspektorEdycja] = useState(false);
   const [komunikat, setKomunikat] = useState('');
 
   useEffect(() => {
@@ -135,6 +136,7 @@ export default function ZarzadzanieCzlonkami() {
     setNowaSekcja(osoba.sekcja || 'balet');
     setNowyGlos(osoba.glos || '');
     setNowaRola(osoba.rola || 'członek');
+    setCzyInspektorEdycja(!!osoba.czy_inspektor);
   };
 
   const zapiszEdycje = async () => {
@@ -146,7 +148,8 @@ export default function ZarzadzanieCzlonkami() {
       .update({
         sekcja: nowaSekcja,
         glos: nowaSekcja === 'chór' ? nowyGlos : null,
-        rola: nowaRola
+        rola: nowaRola,
+        czy_inspektor: czyInspektorEdycja
       })
       .eq('id', wybranyDoEdycji.id);
 
@@ -160,6 +163,26 @@ export default function ZarzadzanieCzlonkami() {
     }
   };
 
+  // Szybkie przełączanie funkcji Inspektora wprost z tabeli
+  const przelaczInspektora = async (userId, aktualnyStan, imie) => {
+    const nowyStan = !aktualnyStan;
+    const { error } = await supabase
+      .from('profiles')
+      .update({ czy_inspektor: nowyStan })
+      .eq('id', userId);
+
+    if (!error) {
+      setKomunikat(nowyStan 
+        ? `Mianowano ${imie} Inspektorem sekcji! 🔍` 
+        : `Odebrano funkcję Inspektora użytkownikowi ${imie}.`
+      );
+      pobierzDane();
+      setTimeout(() => setKomunikat(''), 3000);
+    } else {
+      setKomunikat('Błąd: ' + error.message);
+    }
+  };
+
   const zmienStatusKonta = async (userId, nowyStatus) => {
     const { error } = await supabase
       .from('profiles')
@@ -169,7 +192,6 @@ export default function ZarzadzanieCzlonkami() {
     if (!error) pobierzDane();
   };
 
-  // CAŁKOWITE USUNIĘCIE KONTA Z BAZY
   const usunKontoCalkowicie = async (userId, imieNazwisko) => {
     const zgoda = window.confirm(
       `⚠️ UWAGA: Czy na pewno chcesz CAŁKOWICIE I BEZPOWROTNIE usunąć konto użytkownika "${imieNazwisko}"?\n\nOsoba ta zostanie skasowana z systemu logowania, straci dostęp do aplikacji, a jej wpisy zostaną usunięte.`
@@ -181,7 +203,6 @@ export default function ZarzadzanieCzlonkami() {
       const { error } = await supabase.rpc('usun_konto_uzytkownika', { user_id: userId });
 
       if (error) {
-        // Fallback: próba usunięcia z profiles
         const { error: deleteProfError } = await supabase.from('profiles').delete().eq('id', userId);
         if (deleteProfError) throw deleteProfError;
       }
@@ -280,6 +301,20 @@ export default function ZarzadzanieCzlonkami() {
               </select>
             </div>
 
+            {/* Checkbox funkcji Inspektora */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '18px' }}>
+              <input 
+                type="checkbox" 
+                id="inspektorCheckbox"
+                checked={czyInspektorEdycja} 
+                onChange={(e) => setCzyInspektorEdycja(e.target.checked)} 
+                style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+              />
+              <label htmlFor="inspektorCheckbox" style={{ fontSize: '13px', fontWeight: 'bold', color: '#0369a1', cursor: 'pointer' }}>
+                🔍 Funkcja: Inspektor Sekcji
+              </label>
+            </div>
+
             <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }}>
               <button onClick={zapiszEdycje} style={{ padding: '8px 16px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Zapisz 💾</button>
               <button onClick={() => setWybranyDoEdycji(null)} style={{ padding: '8px 16px', backgroundColor: '#94a3b8', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Anuluj</button>
@@ -295,10 +330,10 @@ export default function ZarzadzanieCzlonkami() {
             <tr style={{ borderBottom: '2px solid #e2e8f0', color: '#64748b', fontSize: '12px', textTransform: 'uppercase' }}>
               <th style={{ padding: '12px 10px' }}>Członek</th>
               <th style={{ padding: '12px 10px' }}>Sekcja macierzysta</th>
-              <th style={{ padding: '12px 10px' }}>Rola</th>
-              <th style={{ padding: '12px 10px', textAlign: 'center' }}>Frekwencja (Oficjalna)</th>
+              <th style={{ padding: '12px 10px' }}>Rola / Funkcja</th>
+              <th style={{ padding: '12px 10px', textAlign: 'center' }}>Frekwencja</th>
               <th style={{ padding: '12px 10px', textAlign: 'center' }}>Streak</th>
-              <th style={{ padding: '12px 10px', textAlign: 'center' }}>Status konta</th>
+              <th style={{ padding: '12px 10px', textAlign: 'center' }}>Status</th>
               <th style={{ padding: '12px 10px', textAlign: 'right' }}>Akcje</th>
             </tr>
           </thead>
@@ -309,9 +344,18 @@ export default function ZarzadzanieCzlonkami() {
 
               return (
                 <tr key={c.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                  <td style={{ padding: '12px 10px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <RenderAvatar url={c.avatar_url} />
-                    <span style={{ fontWeight: 'bold', color: '#1e293b' }}>{c.imie_nazwisko}</span>
+                  <td style={{ padding: '12px 10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <RenderAvatar url={c.avatar_url} />
+                      <div>
+                        <span style={{ fontWeight: 'bold', color: '#1e293b', display: 'block' }}>{c.imie_nazwisko}</span>
+                        {c.czy_inspektor && (
+                          <span style={{ display: 'inline-block', padding: '2px 6px', borderRadius: '4px', fontSize: '10px', fontWeight: 'bold', backgroundColor: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd', marginTop: '2px' }}>
+                            🔍 Inspektor Sekcji
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </td>
                   <td style={{ padding: '12px 10px' }}>
                     <span style={{ padding: '3px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 'bold', backgroundColor: stylSekcji.jasny, color: stylSekcji.glowny, border: `1px solid ${stylSekcji.border}`, textTransform: 'uppercase' }}>
@@ -319,14 +363,14 @@ export default function ZarzadzanieCzlonkami() {
                     </span>
                   </td>
                   <td style={{ padding: '12px 10px', color: '#475569', fontSize: '13px' }}>
-                    {c.rola}
+                    <span style={{ textTransform: 'capitalize' }}>{c.rola}</span>
                   </td>
                   <td style={{ padding: '12px 10px', textAlign: 'center' }}>
                     <span style={{ fontSize: '15px', fontWeight: 'bold', color: stat.procent >= 50 ? '#10b981' : '#ef4444' }}>
                       {stat.procent}%
                     </span>
                     <span style={{ fontSize: '11px', color: '#94a3b8', display: 'block' }}>
-                      ({stat.obecny}/{stat.lacznie} prób)
+                      ({stat.obecny}/{stat.lacznie})
                     </span>
                   </td>
                   <td style={{ padding: '12px 10px', textAlign: 'center', fontWeight: 'bold', color: stat.streak > 0 ? '#f59e0b' : '#94a3b8' }}>
@@ -341,6 +385,26 @@ export default function ZarzadzanieCzlonkami() {
                   </td>
                   <td style={{ padding: '12px 10px', textAlign: 'right' }}>
                     <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                      {/* Przycisk nadawania / odbierania funkcji Inspektora */}
+                      {c.rola === 'członek' && (
+                        <button 
+                          onClick={() => przelaczInspektora(c.id, c.czy_inspektor, c.imie_nazwisko)}
+                          style={{
+                            padding: '5px 8px',
+                            backgroundColor: c.czy_inspektor ? '#f0f9ff' : '#ffffff',
+                            color: c.czy_inspektor ? '#0284c7' : '#475569',
+                            border: '1px solid #bae6fd',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            fontSize: '12px',
+                            fontWeight: '600'
+                          }}
+                          title={c.czy_inspektor ? 'Odbierz funkcję Inspektora' : 'Mianuj na Inspektora sekcji'}
+                        >
+                          {c.czy_inspektor ? 'Odbierz Inspektora ❌' : 'Inspektor 🔍'}
+                        </button>
+                      )}
+
                       <button onClick={() => rozpocznijEdycje(c)} style={{ padding: '5px 8px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>
                         Edytuj ✏️
                       </button>
@@ -355,7 +419,6 @@ export default function ZarzadzanieCzlonkami() {
                         </button>
                       )}
 
-                      {/* PRZYCISK TRWAŁEGO USUNIĘCIA KONTA */}
                       <button 
                         onClick={() => usunKontoCalkowicie(c.id, c.imie_nazwisko)} 
                         style={{ padding: '5px 8px', backgroundColor: '#ef4444', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}

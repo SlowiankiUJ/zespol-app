@@ -55,11 +55,11 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Nasłuchiwanie na żywo: zmiany w profilu (np. gdy kierownik zatwierdzi konto) oraz streak
+  // Nasłuchiwanie na żywo: zmiany w profilu (np. zatwierdzenie, mianowanie na Inspektora) oraz streak
   useEffect(() => {
     if (!profile) return;
 
-    // 1. Nasłuchiwanie na zatwierdzenie konta w profiles
+    // 1. Nasłuchiwanie na zmiany w profilu użytkownika
     const profilChannel = supabase
       .channel(`zmiany_profilu_${profile.id}`)
       .on(
@@ -233,7 +233,17 @@ export default function App() {
         <div>
           <h1 style={{ margin: 0, fontSize: '20px', letterSpacing: '0.5px' }}>ZPiT UJ „Słowianki” 🌾</h1>
           <p style={{ margin: '3px 0 0 0', fontSize: '13px', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <span>Zalogowany jako: <strong style={{ color: '#e2e8f0' }}>{profile?.imie_nazwisko}</strong> ({profile?.rola}{profile?.sekcja ? ` - ${profile.sekcja}` : ''})</span>
+            <span>
+              Zalogowany jako: <strong style={{ color: '#e2e8f0' }}>{profile?.imie_nazwisko}</strong> ({profile?.rola}{profile?.sekcja ? ` - ${profile.sekcja}` : ''})
+            </span>
+            
+            {/* ETYKIETA INSPEKTORA SEKCJI */}
+            {profile?.czy_inspektor && (
+              <span style={{ backgroundColor: '#0284c7', padding: '2px 8px', borderRadius: '12px', color: '#ffffff', fontWeight: 'bold', fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px', border: '1px solid #38bdf8' }}>
+                🔍 Inspektor Sekcji
+              </span>
+            )}
+
             {profile?.rola === 'członek' && (
               <span style={{ backgroundColor: '#334155', padding: '2px 8px', borderRadius: '12px', color: '#f59e0b', fontWeight: 'bold', display: 'inline-flex', alignItems: 'center', gap: '4px', border: '1px solid #475569' }}>
                 🔥 {streak} {streak === 1 ? 'próba z rzędu' : 'prób z rzędu'}
