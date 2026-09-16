@@ -18,7 +18,7 @@ const nazwyMiesiecy = [
 
 export default function Harmonogram({ profile }) {
   const [proby, setProby] = useState([]);
-  const [deklaracje, setDeklaracje] = useState({});
+  const [deklaracje, setDeklaracje] = useState({}); // id_proby -> 'obecny' | 'nieobecny' | 'spozniony'
   const [usprawiedliwienia, setUsprawiedliwienia] = useState({});
   const [aktywneInputyUsprawiedliwienia, setAktywneInputyUsprawiedliwienia] = useState({});
   const [rozwinitaObecnosc, setRozwinitaObecnosc] = useState({});
@@ -52,21 +52,23 @@ export default function Harmonogram({ profile }) {
     }
   }, [profile]);
 
-  // Pobieranie liczby osób zadeklarowanych ("Będę") na próby
+  // Pobieranie liczby osób zadeklarowanych ("Będę" lub "Spóźnię się")
   const pobierzLiczbeZadeklarowanych = async (probyList) => {
     if (!probyList || probyList.length === 0) return;
     const probaIds = probyList.map(p => p.id);
 
     const { data, error } = await supabase
       .from('deklaracje_obecnosci')
-      .select('id_proby, planuje')
-      .in('id_proby', probaIds)
-      .eq('planuje', true);
+      .select('id_proby, planuje, status_deklaracji')
+      .in('id_proby', probaIds);
 
     if (!error && data) {
       const counts = {};
       data.forEach(d => {
-        counts[d.id_proby] = (counts[d.id_proby] || 0) + 1;
+        // Liczymy zarówno 'obecny', 'spozniony', jak i planuje === true
+        if (d.status_deklaracji === 'obecny' || d.status_deklaracji === 'spozniony' || (d.status_deklaracji == null && d.planuje === true)) {
+          counts[d.id_proby] = (counts[d.id_proby] || 0) + 1;
+        }
       });
       setLiczbaZadeklarowanych(counts);
     }
@@ -79,7 +81,6 @@ export default function Harmonogram({ profile }) {
       const { data: dodatkowe } = await supabase.from('dodatkowe_sekcje').select('sekcja').eq('id_uzytkownika', profile.id).eq('status', 'zatwierdzony');
       if (dodatkowe) dodatkowe.forEach(d => { if (!sekcjeDoPobrania.includes(d.sekcja)) sekcjeDoPobrania.push(d.sekcja); });
 
-      // Każdy członek zespołu musi widzieć próbę generalną (cały zespół)
       if (!sekcjeDoPobrania.includes('generalna')) {
         sekcjeDoPobrania.push('generalna');
       }
@@ -100,14 +101,32 @@ export default function Harmonogram({ profile }) {
   };
 
   const pobierzMojeDeklaracje = async () => {
-    const { data, error } = await supabase.from('deklaracje_obecnosci').select('id_proby, planuje, usprawiedliwienie').eq('id_uzytkownika', profile.id);
+    const { data, error } = await supabase
+      .from('deklaracje_obecnosci')
+      .select('id_proby, planuje, status_deklaracji, usprawiedliwienie')
+      .eq('id_uzytkownika', profile.id);
+
     if (!error && data) {
-      const mapaPlanuje = {}; const mapaPowodow = {}; const mapaInputow = {};
+      const mapaPlanuje = {};
+      const mapaPowodow = {};
+      const mapaInputow = {};
+
       data.forEach(d => {
-        mapaPlanuje[d.id_proby] = d.planuje;
-        if (d.usprawiedliwienie) { mapaPowodow[d.id_proby] = d.usprawiedliwienie; mapaInputow[d.id_proby] = d.usprawiedliwienie; }
+        let status = d.status_deklaracji;
+        if (!status) {
+          if (d.planuje === true) status = 'obecny';
+          else if (d.planuje === false) status = 'nieobecny';
+        }
+
+        mapaPlanuje[d.id_proby] = status;
+        if (d.usprawiedliwienie) {
+          mapaPowodow[d.id_proby] = d.usprawiedliwienie;
+          mapaInputow[d.id_proby] = d.usprawiedliwienie;
+        }
       });
-      setDeklaracje(mapaPlanuje); setUsprawiedliwienia(mapaPowodow); setAktywneInputyUsprawiedliwienia(mapaInputow);
+      setDeklaracje(mapaPlanuje);
+      setUsprawiedliwienia(mapaPowodow);
+      setAktywneInputyUsprawiedliwienia(mapaInputow);
     }
   };
 
@@ -134,9 +153,9 @@ export default function Harmonogram({ profile }) {
           })
         });
         const wynikJson = await resPowiadomienie.json();
-        console.log("Wynik wysyłania powiadomienia próby:", wynikJson);
+        console.log("Wynik powiadomienia:", wynikJson);
       } catch (err) {
-        console.error("Błąd sieciowy wysyłania powiadomienia", err);
+        console.error("Błąd sieciowy powiadomienia:", err);
       }
 
       setDataProby(''); setOpisCwiczen('');
@@ -212,22 +231,45 @@ export default function Harmonogram({ profile }) {
     else { setEdycjaProbaId(null); pobierzProby(); }
   };
 
-  const zaktualizujDeklaracje = async (probaId, statusPlanuje) => {
-    const noweUsprawiedliwienie = statusPlanuje === true ? null : (usprawiedliwienia[probaId] || null);
-    const { error } = await supabase.from('deklaracje_obecnosci').upsert([{ id_proby: probaId, id_uzytkownika: profile.id, planuje: statusPlanuje, usprawiedliwienie: noweUsprawiedliwienie }], { onConflict: 'id_proby, id_uzytkownika' });
+  // Zaktualizowana funkcja deklaracji: obsługuje statusy: 'obecny', 'nieobecny', 'spozniony'
+  const zaktualizujDeklaracje = async (probaId, nowyStatus) => {
+    const planujeVal = nowyStatus === 'nieobecny' ? false : true;
+    const zachowaneUsprawiedliwienie = nowyStatus === 'obecny' ? null : (usprawiedliwienia[probaId] || null);
+
+    const payload = {
+      id_proby: probaId,
+      id_uzytkownika: profile.id,
+      planuje: planujeVal,
+      status_deklaracji: nowyStatus,
+      usprawiedliwienie: zachowaneUsprawiedliwienie
+    };
+
+    const { error } = await supabase.from('deklaracje_obecnosci').upsert([payload], { onConflict: 'id_proby, id_uzytkownika' });
     if (!error) {
-      setDeklaracje(prev => ({ ...prev, [probaId]: statusPlanuje }));
-      if (statusPlanuje === true) { setUsprawiedliwienia(prev => ({ ...prev, [probaId]: null })); setAktywneInputyUsprawiedliwienia(prev => ({ ...prev, [probaId]: '' })); }
-      
-      // Odświeżenie licznika po kliknięciu deklaracji
+      setDeklaracje(prev => ({ ...prev, [probaId]: nowyStatus }));
+      if (nowyStatus === 'obecny') {
+        setUsprawiedliwienia(prev => ({ ...prev, [probaId]: null }));
+        setAktywneInputyUsprawiedliwienia(prev => ({ ...prev, [probaId]: '' }));
+      }
       pobierzLiczbeZadeklarowanych(proby);
     }
   };
 
-  const zapiszUsprawiedliwienie = async (probaId) => {
+  const zapiszKomentarzDeklaracji = async (probaId, typ) => {
     const tekst = aktywneInputyUsprawiedliwienia[probaId] || '';
-    const { error } = await supabase.from('deklaracje_obecnosci').upsert([{ id_proby: probaId, id_uzytkownika: profile.id, planuje: false, usprawiedliwienie: tekst }], { onConflict: 'id_proby, id_uzytkownika' });
-    if (!error) { setUsprawiedliwienia(prev => ({ ...prev, [probaId]: tekst })); alert('Usprawiedliwienie zapisane. ✅'); }
+    const payload = {
+      id_proby: probaId,
+      id_uzytkownika: profile.id,
+      planuje: typ === 'nieobecny' ? false : true,
+      status_deklaracji: typ,
+      usprawiedliwienie: tekst
+    };
+
+    const { error } = await supabase.from('deklaracje_obecnosci').upsert([payload], { onConflict: 'id_proby, id_uzytkownika' });
+    if (!error) {
+      setUsprawiedliwienia(prev => ({ ...prev, [probaId]: tekst }));
+      alert(typ === 'spozniony' ? 'Zapisano informację o spóźnieniu! ⏰' : 'Usprawiedliwienie zapisane. ✅');
+    }
   };
 
   const przelaczObecnosc = (probaId) => {
@@ -264,7 +306,6 @@ export default function Harmonogram({ profile }) {
   const inputStyle = { width: '100%', boxSizing: 'border-box', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', fontSize: '14px' };
   const labelStyle = { display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#64748b', marginBottom: '4px' };
 
-  // Pomocnicza funkcja odmieniająca słowo "osób"
   const formatujLiczbeOsob = (n) => {
     if (n === 1) return '1 osoba zadeklarowała obecność';
     if (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20)) return `${n} osoby zadeklarowały obecność`;
@@ -385,10 +426,9 @@ export default function Harmonogram({ profile }) {
                   <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '20px', backgroundColor: '#ffffff' }}>
                     {grupa.proby.map(proba => {
                       const stylSekcji = pobierzStylSekcji(proba.sekcja);
-                      const deklaracjaUzytkownika = deklaracje[proba.id];
+                      const statusDeklaracji = deklaracje[proba.id];
                       const czyEdytowana = edycjaProbaId === proba.id;
                       const isRozwinietaDlaKadry = rozwinitaObecnosc[proba.id];
-                      
                       const liczbaOsobZadeklarowanych = liczbaZadeklarowanych[proba.id] || 0;
 
                       return (
@@ -448,18 +488,118 @@ export default function Harmonogram({ profile }) {
                                 <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
                                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
                                     <span style={{ fontSize: '14px', fontWeight: '600', color: '#1e293b' }}>Twoja deklaracja:</span>
-                                    <div style={{ display: 'flex', gap: '8px' }}>
-                                      <button onClick={() => zaktualizujDeklaracje(proba.id, true)} style={{ padding: '8px 14px', borderRadius: '20px', border: '1px solid', borderColor: deklaracjaUzytkownika === true ? '#10b981' : '#cbd5e1', backgroundColor: deklaracjaUzytkownika === true ? '#10b981' : '#f8fafc', color: deklaracjaUzytkownika === true ? '#ffffff' : '#475569', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}>Będę 👍</button>
-                                      <button onClick={() => zaktualizujDeklaracje(proba.id, false)} style={{ padding: '8px 14px', borderRadius: '20px', border: '1px solid', borderColor: deklaracjaUzytkownika === false ? '#ef4444' : '#cbd5e1', backgroundColor: deklaracjaUzytkownika === false ? '#ef4444' : '#f8fafc', color: deklaracjaUzytkownika === false ? '#ffffff' : '#475569', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}>Nie będzie 👎</button>
+                                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                      {/* PRZYCISK: BĘDĘ */}
+                                      <button 
+                                        onClick={() => zaktualizujDeklaracje(proba.id, 'obecny')} 
+                                        style={{ 
+                                          padding: '8px 14px', 
+                                          borderRadius: '20px', 
+                                          border: '1px solid', 
+                                          borderColor: statusDeklaracji === 'obecny' ? '#10b981' : '#cbd5e1', 
+                                          backgroundColor: statusDeklaracji === 'obecny' ? '#10b981' : '#f8fafc', 
+                                          color: statusDeklaracji === 'obecny' ? '#ffffff' : '#475569', 
+                                          cursor: 'pointer', 
+                                          fontWeight: 'bold', 
+                                          fontSize: '13px' 
+                                        }}
+                                      >
+                                        Będę 👍
+                                      </button>
+
+                                      {/* PRZYCISK: SPÓŹNIĘ SIĘ */}
+                                      <button 
+                                        onClick={() => zaktualizujDeklaracje(proba.id, 'spozniony')} 
+                                        style={{ 
+                                          padding: '8px 14px', 
+                                          borderRadius: '20px', 
+                                          border: '1px solid', 
+                                          borderColor: statusDeklaracji === 'spozniony' ? '#f59e0b' : '#cbd5e1', 
+                                          backgroundColor: statusDeklaracji === 'spozniony' ? '#f59e0b' : '#f8fafc', 
+                                          color: statusDeklaracji === 'spozniony' ? '#ffffff' : '#475569', 
+                                          cursor: 'pointer', 
+                                          fontWeight: 'bold', 
+                                          fontSize: '13px' 
+                                        }}
+                                      >
+                                        Spóźnię się ⏰
+                                      </button>
+
+                                      {/* PRZYCISK: NIE BĘDĘ */}
+                                      <button 
+                                        onClick={() => zaktualizujDeklaracje(proba.id, 'nieobecny')} 
+                                        style={{ 
+                                          padding: '8px 14px', 
+                                          borderRadius: '20px', 
+                                          border: '1px solid', 
+                                          borderColor: statusDeklaracji === 'nieobecny' ? '#ef4444' : '#cbd5e1', 
+                                          backgroundColor: statusDeklaracji === 'nieobecny' ? '#ef4444' : '#f8fafc', 
+                                          color: statusDeklaracji === 'nieobecny' ? '#ffffff' : '#475569', 
+                                          cursor: 'pointer', 
+                                          fontWeight: 'bold', 
+                                          fontSize: '13px' 
+                                        }}
+                                      >
+                                        Nie będę 👎
+                                      </button>
                                     </div>
                                   </div>
-                                  {deklaracjaUzytkownika === false && (
-                                    <div style={{ marginTop: '12px', padding: '12px', backgroundColor: '#fef2f2', borderRadius: '6px', border: '1px solid #fecaca' }}>
-                                      <p style={{ margin: '0 0 5px 0', fontSize: '13px', color: '#991b1b', fontWeight: '600' }}>Powód nieobecności:</p>
+
+                                  {/* FORMULARZ DLA SPÓŹNIENIA */}
+                                  {statusDeklaracji === 'spozniony' && (
+                                    <div style={{ marginTop: '12px', padding: '12px', backgroundColor: '#fffbeb', borderRadius: '6px', border: '1px solid #fde68a' }}>
+                                      <p style={{ margin: '0 0 5px 0', fontSize: '13px', color: '#b45309', fontWeight: '600' }}>
+                                        ⏰ Informacja o spóźnieniu (godzina przybycia / powód):
+                                      </p>
                                       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                                        <input type="text" placeholder="np. Choroba" value={aktywneInputyUsprawiedliwienia[proba.id] || ''} onChange={(e) => setAktywneInputyUsprawiedliwienia({ ...aktywneInputyUsprawiedliwienia, [proba.id]: e.target.value })} style={{ flex: '1 1 150px', ...inputStyle }} />
-                                        <button onClick={() => zapiszUsprawiedliwienie(proba.id)} style={{ padding: '8px 14px', backgroundColor: '#ef4444', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' }}>Zapisz</button>
+                                        <input 
+                                          type="text" 
+                                          placeholder="np. Będę około 18:30 (korki / uczelnia)" 
+                                          value={aktywneInputyUsprawiedliwienia[proba.id] || ''} 
+                                          onChange={(e) => setAktywneInputyUsprawiedliwienia({ ...aktywneInputyUsprawiedliwienia, [proba.id]: e.target.value })} 
+                                          style={{ flex: '1 1 150px', ...inputStyle }} 
+                                        />
+                                        <button 
+                                          onClick={() => zapiszKomentarzDeklaracji(proba.id, 'spozniony')} 
+                                          style={{ padding: '8px 14px', backgroundColor: '#f59e0b', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' }}
+                                        >
+                                          Zapisz
+                                        </button>
                                       </div>
+                                      {usprawiedliwienia[proba.id] && (
+                                        <p style={{ margin: '6px 0 0 0', fontSize: '12px', color: '#92400e', fontStyle: 'italic' }}>
+                                          Zapisano: „{usprawiedliwienia[proba.id]}”
+                                        </p>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {/* FORMULARZ DLA NIEOBECNOŚCI */}
+                                  {statusDeklaracji === 'nieobecny' && (
+                                    <div style={{ marginTop: '12px', padding: '12px', backgroundColor: '#fef2f2', borderRadius: '6px', border: '1px solid #fecaca' }}>
+                                      <p style={{ margin: '0 0 5px 0', fontSize: '13px', color: '#991b1b', fontWeight: '600' }}>
+                                        Powód nieobecności:
+                                      </p>
+                                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                        <input 
+                                          type="text" 
+                                          placeholder="np. Choroba / Kolokwium" 
+                                          value={aktywneInputyUsprawiedliwienia[proba.id] || ''} 
+                                          onChange={(e) => setAktywneInputyUsprawiedliwienia({ ...aktywneInputyUsprawiedliwienia, [proba.id]: e.target.value })} 
+                                          style={{ flex: '1 1 150px', ...inputStyle }} 
+                                        />
+                                        <button 
+                                          onClick={() => zapiszKomentarzDeklaracji(proba.id, 'nieobecny')} 
+                                          style={{ padding: '8px 14px', backgroundColor: '#ef4444', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' }}
+                                        >
+                                          Zapisz
+                                        </button>
+                                      </div>
+                                      {usprawiedliwienia[proba.id] && (
+                                        <p style={{ margin: '6px 0 0 0', fontSize: '12px', color: '#7f1d1d', fontStyle: 'italic' }}>
+                                          Zapisano: „{usprawiedliwienia[proba.id]}”
+                                        </p>
+                                      )}
                                     </div>
                                   )}
                                 </div>
