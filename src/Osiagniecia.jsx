@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 
 export default function Osiagniecia({ profile }) {
+  const [pelnyProfil, setPelnyProfil] = useState(null);
   const [staty, setStaty] = useState({
     koncertyUdział: 0,
     występyObsada: 0,
@@ -14,29 +15,30 @@ export default function Osiagniecia({ profile }) {
 
   useEffect(() => {
     if (profile?.id) {
-      obliczOsiagniecia();
+      pobierzProfilIOsiagniecia(profile.id);
     }
   }, [profile?.id]);
 
-  const obliczOsiagniecia = async () => {
+  const pobierzProfilIOsiagniecia = async (userId) => {
     setLoading(true);
     try {
-      const targetUserId = profile.id;
+      // 1. Zawsze pobieramy świeży i kompletny profil bezpośrednio z bazy dla wskazanego ID
+      const { data: profData, error: profError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
 
-      // Jeśli przekazany profil nie ma informacji o sekcji, pobierzmy go z tabeli profiles
-      let glownaSekcjaClean = (profile.sekcja || '').trim().toLowerCase();
-      if (!glownaSekcjaClean) {
-        const { data: profData } = await supabase
-          .from('profiles')
-          .select('sekcja')
-          .eq('id', targetUserId)
-          .single();
-        if (profData?.sekcja) {
-          glownaSekcjaClean = profData.sekcja.trim().toLowerCase();
-        }
+      if (profError || !profData) {
+        console.error('Nie znaleziono profilu:', profError);
+        setLoading(false);
+        return;
       }
 
-      // Bezpieczne, równoległe pobieranie wszystkich danych
+      setPelnyProfil(profData);
+      const glownaSekcjaClean = (profData.sekcja || '').trim().toLowerCase();
+
+      // 2. Równoległe pobieranie wszystkich danych statystycznych dla tego użytkownika
       const [
         resKoncerty,
         resObsada,
@@ -45,28 +47,28 @@ export default function Osiagniecia({ profile }) {
         resProby,
         resObecnosci
       ] = await Promise.all([
-        supabase.from('deklaracje_koncerty').select('id_koncertu, zakwalifikowany').eq('id_uzytkownika', targetUserId),
-        supabase.from('koncert_obsada').select('id').eq('id_uzytkownika', targetUserId),
-        supabase.from('koncert_walizki').select('id').eq('id_uzytkownika', targetUserId),
-        supabase.from('kwiatki_uczestnicy').select('id, wybrany').eq('id_uzytkownika', targetUserId).eq('wybrany', true),
+        supabase.from('deklaracje_koncerty').select('id_koncertu, zakwalifikowany').eq('id_uzytkownika', userId),
+        supabase.from('koncert_obsada').select('id').eq('id_uzytkownika', userId),
+        supabase.from('koncert_walizki').select('id').eq('id_uzytkownika', userId),
+        supabase.from('kwiatki_uczestnicy').select('id, wybrany').eq('id_uzytkownika', userId).eq('wybrany', true),
         supabase.from('proby').select('id, data_czas, sekcja').order('data_czas', { ascending: false }),
-        supabase.from('deklaracje_obecnosci').select('id_proby, obecny').eq('id_uzytkownika', targetUserId)
+        supabase.from('deklaracje_obecnosci').select('id_proby, obecny').eq('id_uzytkownika', userId)
       ]);
 
-      // 1. Koncerty
+      // Koncerty
       const zakwalifikowaneKoncerty = resKoncerty.data ? resKoncerty.data.filter(d => d.zakwalifikowany === true) : [];
       const liczbaKoncertow = zakwalifikowaneKoncerty.length;
 
-      // 2. Obsada
+      // Obsada
       const liczbaWystepow = resObsada.data ? resObsada.data.length : 0;
 
-      // 3. Walizki
+      // Walizki
       const lacznieWalizki = resWalizki.data ? resWalizki.data.length : 0;
 
-      // 4. Kwiatki
+      // Kwiatki
       const lacznieKwiatki = resKwiatki.data ? resKwiatki.data.length : 0;
 
-      // 5. Próby i obecności
+      // Próby i obecności
       const probyList = resProby.data || [];
       const obecnosciData = resObecnosci.data || [];
 
@@ -79,7 +81,7 @@ export default function Osiagniecia({ profile }) {
           dekMap[String(d.id_proby)] = d.obecny;
         });
 
-        // Tylko próby sekcji macierzystej
+        // Tylko próby sekcji macierzystej użytkownika
         const wlasneProby = probyList.filter(p => {
           const s = (p.sekcja || '').trim().toLowerCase();
           return s === glownaSekcjaClean && s !== 'generalna';
@@ -246,13 +248,14 @@ export default function Osiagniecia({ profile }) {
 
   const odznaki = generujOdznaki();
   const zdobyteCount = odznaki.filter(o => o.zdobyte).length;
+  const imieWyświetlane = pelnyProfil?.imie_nazwisko || profile?.imie_nazwisko || 'Członek';
 
   return (
     <div style={{ marginTop: '20px', padding: '25px', border: '1px solid #e2e8f0', borderRadius: '12px', backgroundColor: '#ffffff', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '20px' }}>
         <div>
           <h2 style={{ color: '#1e293b', margin: '0 0 5px 0', fontSize: '20px' }}>
-            Osiągnięcia i Medale: {profile.imie_nazwisko || 'Członek'} 🏆
+            Osiągnięcia i Medale: {imieWyświetlane} 🏆
           </h2>
           <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>
             Streak: <strong style={{ color: '#8b5cf6' }}>🔥 {staty.streak} prób</strong> | 
