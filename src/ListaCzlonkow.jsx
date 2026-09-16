@@ -1,22 +1,11 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
-
-const oczyscTekst = (str) => {
-  if (!str) return '';
-  return str
-    .toString()
-    .trim()
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/ł/g, 'l');
-};
+import Osiagniecia from './Osiagniecia';
 
 export default function ListaCzlonkow({ profile }) {
   const [czlonkowie, setCzlonkowie] = useState([]);
   const [loading, setLoading] = useState(true);
   const [wybranyCzłonek, setWybranyCzłonek] = useState(null);
-  const [statyCzlonka, setStatyCzlonka] = useState({ frekwencja: 0, streak: 0, koncerty: 0, występy: 0, odznaki: [] });
 
   useEffect(() => {
     if (profile) {
@@ -43,112 +32,6 @@ export default function ListaCzlonkow({ profile }) {
     }
   };
 
-  const otwórzSzczegóły = async (wybranaOsoba) => {
-    setWybranyCzłonek(wybranaOsoba);
-    setLoading(true);
-
-    try {
-      const sekcjaOsoby = oczyscTekst(wybranaOsoba.sekcja);
-
-      // 1. POBIERAMY DEKLARACJE WRAZ Z DANYMI PRÓBY BEZPOŚREDNIO Z RELACJI
-      const { data: obecnosciZProbami, error: obecnosciError } = await supabase
-        .from('deklaracje_obecnosci')
-        .select(`
-          obecny,
-          proby!inner (
-            id,
-            data_czas,
-            sekcja
-          )
-        `)
-        .eq('id_uzytkownika', wybranaOsoba.id);
-
-      if (obecnosciError) throw obecnosciError;
-
-      let ob = 0;
-      let tot = 0;
-      let aktualnyStreak = 0;
-
-      if (obecnosciZProbami && obecnosciZProbami.length > 0) {
-        // FILTRUJEMY: Zostawiamy TYLKO próby, których sekcja zgadza się z sekcją członka
-        // Próby gościnne (gdzie proby.sekcja != sekcjaOsoby) oraz próby generalne zostają ODRZUCONE
-        const tylkoWlasneObecnosci = obecnosciZProbami.filter(item => {
-          if (!item.proby) return false;
-          const probaSekcja = oczyscTekst(item.proby.sekcja);
-          return probaSekcja === sekcjaOsoby && probaSekcja !== 'generalna';
-        });
-
-        // FREKWENCJA
-        tylkoWlasneObecnosci.forEach(item => {
-          if (item.obecny === true) {
-            ob++;
-            tot++;
-          } else if (item.obecny === false) {
-            tot++;
-          }
-        });
-
-        // STREAK (sortujemy malejąco po dacie próby)
-        const posortowaneDoStreaka = [...tylkoWlasneObecnosci]
-          .filter(item => item.obecny === true || item.obecny === false)
-          .sort((a, b) => new Date(b.proby.data_czas) - new Date(a.proby.data_czas));
-
-        for (const item of posortowaneDoStreaka) {
-          if (item.obecny === true) {
-            aktualnyStreak++;
-          } else if (item.obecny === false) {
-            break;
-          }
-        }
-      }
-
-      const procentFrekwencji = tot > 0 ? Math.round((ob / tot) * 100) : 0;
-
-      // 2. KONCERTY - TYLKO ze statusem zakwalifikowany === true
-      const { data: dekKoncerty } = await supabase
-        .from('deklaracje_koncerty')
-        .select('id_koncertu, zakwalifikowany')
-        .eq('id_uzytkownika', wybranaOsoba.id);
-
-      const zakwalifikowaneKoncerty = dekKoncerty ? dekKoncerty.filter(d => d.zakwalifikowany === true) : [];
-      const liczbaKoncertow = zakwalifikowaneKoncerty.length;
-
-      // 3. WYSTĘPY W OBSADZIE PROGRAMU
-      const { data: obsadaData } = await supabase
-        .from('koncert_obsada')
-        .select('id')
-        .eq('id_uzytkownika', wybranaOsoba.id);
-
-      const liczbaWystepow = obsadaData ? obsadaData.length : 0;
-
-      // GENEROWANIE ODZNAK
-      const odznaki = [
-        { tytuł: 'Rozgrzewka w tańcu (5 prób)', zdobyte: aktualnyStreak >= 5, ikona: '👟' },
-        { tytuł: 'Żelazna kondycja (15 prób)', zdobyte: aktualnyStreak >= 15, ikona: '🪵' },
-        { tytuł: 'Legenda parkietu i nut (30 prób)', zdobyte: aktualnyStreak >= 30, ikona: '🎻' },
-        { tytuł: 'Niezniszczalny Słowianin (50 prób)', zdobyte: aktualnyStreak >= 50, ikona: '🌾' },
-        { tytuł: 'Bóg Sceny i Parkietu (100 prób)', zdobyte: aktualnyStreak >= 100, ikona: '👑' },
-        { tytuł: 'Człowiek Sceny: 1 Koncert', zdobyte: liczbaKoncertow >= 1, ikona: '🎫' },
-        { tytuł: 'Człowiek Sceny: 5 Koncertów', zdobyte: liczbaKoncertow >= 5, ikona: '🎫' },
-        { tytuł: 'Człowiek Sceny: 10 Koncertów', zdobyte: liczbaKoncertow >= 10, ikona: '🎫' },
-        { tytuł: 'Wirtuoz Parkietu: 10 Występów', zdobyte: liczbaWystepow >= 10, ikona: '💃' },
-        { tytuł: 'Wirtuoz Parkietu: 30 Występów', zdobyte: liczbaWystepow >= 30, ikona: '💃' }
-      ];
-
-      setStatyCzlonka({
-        frekwencja: procentFrekwencji,
-        streak: aktualnyStreak,
-        koncerty: liczbaKoncertow,
-        występy: liczbaWystepow,
-        odznaki: odznaki.filter(o => o.zdobyte)
-      });
-    } catch (err) {
-      console.error('Błąd pobierania szczegółów członka:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   if (loading && czlonkowie.length === 0) {
     return <div style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>Ładowanie listy członków zespołu... 👥</div>;
   }
@@ -157,20 +40,21 @@ export default function ListaCzlonkow({ profile }) {
     <div style={{ marginTop: '20px', padding: '25px', border: '1px solid #e2e8f0', borderRadius: '12px', backgroundColor: '#ffffff', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
       <h2 style={{ color: '#1e293b', marginBottom: '8px', fontSize: '20px' }}>Członkowie Zespołu 👥</h2>
       <p style={{ color: '#64748b', fontSize: '14px', marginBottom: '25px' }}>
-        Przeglądaj profile znajomych z zespołu, sprawdź ich sekcje, oficjalną frekwencję oraz zdobyte osiągnięcia!
+        Przeglądaj profile znajomych z zespołu, sprawdź ich sekcje oraz pełne statystyki i osiągnięcia!
       </p>
 
-      {/* SZCZEGÓŁY WYBRANEGO CZŁONKA */}
+      {/* SZCZEGÓŁY WYBRANEGO CZŁONKA (WYŚWIETLAMY PEŁNY KOMPONENT OSIĄGNIĘĆ) */}
       {wybranyCzłonek && (
         <div style={{ marginBottom: '30px', padding: '20px', backgroundColor: '#f8fafc', borderRadius: '10px', border: '2px solid #8b5cf6', position: 'relative' }}>
           <button 
             onClick={() => setWybranyCzłonek(null)}
-            style={{ position: 'absolute', top: '15px', right: '15px', background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: '#64748b' }}
+            style={{ position: 'absolute', top: '15px', right: '15px', background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: '#64748b', zIndex: 10 }}
+            title="Zamknij"
           >
             ✕
           </button>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap', marginBottom: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap', marginBottom: '15px' }}>
             <div style={{ width: '70px', height: '70px', borderRadius: '50%', backgroundColor: '#e2e8f0', overflow: 'hidden', display: 'flex', justifyContent: 'center', alignItems: 'center', border: '2px solid #8b5cf6', flexShrink: 0 }}>
               {wybranyCzłonek.avatar_url ? (
                 <img src={wybranyCzłonek.avatar_url} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -187,37 +71,8 @@ export default function ListaCzlonkow({ profile }) {
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px', marginBottom: '20px' }}>
-            <div style={{ padding: '12px', backgroundColor: '#fff', borderRadius: '6px', border: '1px solid #cbd5e1', textAlign: 'center' }}>
-              <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#64748b', display: 'block' }}>FREKWENCJA</span>
-              <span style={{ fontSize: '20px', fontWeight: '900', color: '#8b5cf6' }}>{statyCzlonka.frekwencja}%</span>
-            </div>
-            <div style={{ padding: '12px', backgroundColor: '#fff', borderRadius: '6px', border: '1px solid #cbd5e1', textAlign: 'center' }}>
-              <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#64748b', display: 'block' }}>STREAK PRÓB</span>
-              <span style={{ fontSize: '20px', fontWeight: '900', color: '#f59e0b' }}>🔥 {statyCzlonka.streak}</span>
-            </div>
-            <div style={{ padding: '12px', backgroundColor: '#fff', borderRadius: '6px', border: '1px solid #cbd5e1', textAlign: 'center' }}>
-              <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#64748b', display: 'block' }}>KONCERTY</span>
-              <span style={{ fontSize: '20px', fontWeight: '900', color: '#10b981' }}>{statyCzlonka.koncerty}</span>
-            </div>
-            <div style={{ padding: '12px', backgroundColor: '#fff', borderRadius: '6px', border: '1px solid #cbd5e1', textAlign: 'center' }}>
-              <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#64748b', display: 'block' }}>WYSTĘPY</span>
-              <span style={{ fontSize: '20px', fontWeight: '900', color: '#3b82f6' }}>{statyCzlonka.występy}</span>
-            </div>
-          </div>
-
-          <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#334155' }}>Zdobyte osiągnięcia i medale ({statyCzlonka.odznaki.length}):</h4>
-          {statyCzlonka.odznaki.length === 0 ? (
-            <p style={{ fontSize: '13px', color: '#94a3b8', fontStyle: 'italic', margin: 0 }}>Ten użytkownik nie odblokował jeszcze żadnych medali.</p>
-          ) : (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-              {statyCzlonka.odznaki.map((o, i) => (
-                <span key={i} style={{ padding: '6px 12px', backgroundColor: '#f0fdf4', border: '1px solid #10b981', borderRadius: '16px', fontSize: '12px', fontWeight: 'bold', color: '#065f46', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span>{o.ikona}</span> {o.tytuł}
-                </span>
-              ))}
-            </div>
-          )}
+          {/* Wstrzykujemy uniwersalny komponent osiągnięć dla wybranego członka */}
+          <Osiagniecia profile={wybranyCzłonek} />
         </div>
       )}
 
@@ -226,7 +81,7 @@ export default function ListaCzlonkow({ profile }) {
         {czlonkowie.map((czlonek) => (
           <div 
             key={czlonek.id} 
-            onClick={() => otwórzSzczegóły(czlonek)}
+            onClick={() => setWybranyCzłonek(czlonek)}
             style={{ 
               padding: '16px', 
               borderRadius: '8px', 
@@ -257,7 +112,7 @@ export default function ListaCzlonkow({ profile }) {
                 Sekcja: <strong style={{ textTransform: 'uppercase', color: '#3182ce' }}>{czlonek.sekcja}</strong>
               </p>
               <span style={{ display: 'inline-block', marginTop: '4px', fontSize: '11px', color: '#8b5cf6', fontWeight: 'bold' }}>
-                Kliknij po szczegóły 📊
+                Kliknij po osiągnięcia 🏆
               </span>
             </div>
           </div>
