@@ -37,10 +37,12 @@ export default function ListaCzlonkow({ profile }) {
     setLoading(true);
 
     try {
-      // 1. Obliczanie frekwencji i streaka (tylko z oficjalnej sekcji tej osoby)
+      const glownaSekcjaOsoby = (wybranaOsoba.sekcja || '').trim().toLowerCase();
+
+      // 1. Pobieramy obecności i próby
       const { data: obecnosciData } = await supabase
         .from('deklaracje_obecnosci')
-        .select('obecny, id_proby, proby(data_czas)')
+        .select('obecny, id_proby')
         .eq('id_uzytkownika', wybranaOsoba.id);
 
       const { data: probyList } = await supabase
@@ -57,21 +59,24 @@ export default function ListaCzlonkow({ profile }) {
         const probaInfoMap = {};
         probyList.forEach(p => {
           if (p.id && p.data_czas) {
-            probaInfoMap[p.id] = { data_czas: p.data_czas, sekcja: p.sekcja };
+            probaInfoMap[p.id] = { 
+              data_czas: p.data_czas, 
+              sekcja: (p.sekcja || '').trim().toLowerCase() 
+            };
           }
         });
 
-        // IGNORUJEMY OBECNOŚCI GOŚCINNE I GENERALNE (tylko wybranaOsoba.sekcja)
+        // IGNORUJEMY WSZYSTKO CO NIE JEST JEGO GŁÓWNĄ SEKCJĄ!
         const wpisyZUstalonaData = obecnosciData
           .map(d => {
             const info = probaInfoMap[d.id_proby];
             return {
               obecny: d.obecny,
-              data_proba: d.proby ? d.proby.data_czas : (info ? info.data_czas : null),
+              data_proba: info ? info.data_czas : null,
               sekcja: info ? info.sekcja : null
             };
           })
-          .filter(item => item.data_proba && item.sekcja === wybranaOsoba.sekcja && (item.obecny === true || item.obecny === false));
+          .filter(item => item.data_proba && item.sekcja === glownaSekcjaOsoby && (item.obecny === true || item.obecny === false));
 
         wpisyZUstalonaData.forEach(item => {
           if (item.obecny === true) { ob++; tot++; }
