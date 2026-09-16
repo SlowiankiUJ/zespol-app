@@ -7,7 +7,8 @@ export default function Osiagniecia({ profile }) {
     występyObsada: 0,
     miesieczna100Frekwencja: false,
     streak: 0,
-    liczbaWalizek: 0
+    liczbaWalizek: 0,
+    liczbaKwiatkow: 0
   });
   const [loading, setLoading] = useState(true);
 
@@ -46,7 +47,16 @@ export default function Osiagniecia({ profile }) {
 
       const lacznieWalizki = walizkiData ? walizkiData.length : 0;
 
-      // 4. Próby i obecności
+      // 4. Kwiatki - udział w oficjalnym składzie wybranym przez Kierownika / Inspektora
+      const { data: kwiatkiData } = await supabase
+        .from('kwiatki_uczestnicy')
+        .select('id, wybrany')
+        .eq('id_uzytkownika', profile.id)
+        .eq('wybrany', true);
+
+      const lacznieKwiatki = kwiatkiData ? kwiatkiData.length : 0;
+
+      // 5. Próby i obecności
       const { data: probyList } = await supabase
         .from('proby')
         .select('id, data_czas, sekcja')
@@ -110,7 +120,8 @@ export default function Osiagniecia({ profile }) {
         występyObsada: liczbaWystepow,
         miesieczna100Frekwencja: ma100PrzezMiesiac,
         streak: aktualnyStreak,
-        liczbaWalizek: lacznieWalizki
+        liczbaWalizek: lacznieWalizki,
+        liczbaKwiatkow: lacznieKwiatki
       });
     } catch (err) {
       console.error('Błąd obliczania osiągnięć:', err);
@@ -153,7 +164,7 @@ export default function Osiagniecia({ profile }) {
       kategoria: 'Frekwencja'
     });
 
-    // 3. NOWE OSIĄGNIĘCIA: WALIZKI (1, 10, 15, 30, 50)
+    // 3. WALIZKI (1, 10, 15, 30, 50)
     const progiWalizek = [
       { 
         prog: 1, 
@@ -199,7 +210,53 @@ export default function Osiagniecia({ profile }) {
       });
     });
 
-    // 4. KONCERTY
+    // 4. NOWE OSIĄGNIĘCIA: KWIATKI (1, 3, 5, 10, 20)
+    const progiKwiatkow = [
+      {
+        prog: 1,
+        tytul: 'Debiut w Bukiecie',
+        opis: 'Pierwsze wyjście na kwiatki zaliczone! Wstążki poprawione, uśmiech numer pięć i bukiet wręczony bez upuszczenia.',
+        ikona: '🌸'
+      },
+      {
+        prog: 3,
+        tytul: 'Krakowski Kwiaciarz',
+        opis: '3 delegacje kwiatowe za Tobą! Masz już w małym palcu etykietę, elegancki ukłon i wiesz dokładnie, kiedy zaintonować „Sto lat”.',
+        ikona: '🌷'
+      },
+      {
+        prog: 5,
+        tytul: 'Ulubieniec Jubilatów',
+        opis: '5 wyjść na kwiatki. Inspektor i Kierownik wiedzą, że gdy idziesz w delegacji, zespół prezentuje się nienagannie.',
+        ikona: '💐'
+      },
+      {
+        prog: 10,
+        tytul: 'Mistrz Dyplomacji i Florystyki',
+        opis: '10 zaliczonych kwiatków! Prawdopodobnie znasz z imienia kwiaciarki w połowie Krakowa, a przemówienia improwizujesz w biegu.',
+        ikona: '🌹'
+      },
+      {
+        prog: 20,
+        tytul: 'Żywa Legenda Delegacji',
+        opis: '20 wyjść na kwiatki! Żadna uroczystość uniwersytecka ani ślub nie mogą odbyć się bez Twojej obecności. Status Ambasadora Słowianek!',
+        ikona: '👑'
+      }
+    ];
+
+    progiKwiatkow.forEach(k => {
+      const aktualny = Math.min(staty.liczbaKwiatkow, k.prog);
+      odznaki.push({
+        tytuł: `${k.tytul} (${k.prog} ${k.prog === 1 ? 'wyjście' : k.prog < 5 ? 'wyjścia' : 'wyjść'})`,
+        opis: k.opis,
+        ikona: k.ikona,
+        zdobyte: staty.liczbaKwiatkow >= k.prog,
+        postęp: `${aktualny}/${k.prog}`,
+        kategoria: 'Kwiatki i Delegacje'
+      });
+    });
+
+    // 5. KONCERTY
     const progiKoncertow = [1, 5, 10, 25, 50, 100];
     progiKoncertow.forEach(prog => {
       const aktualny = Math.min(staty.koncertyUdział, prog);
@@ -213,7 +270,7 @@ export default function Osiagniecia({ profile }) {
       });
     });
 
-    // 5. WYSTĘPY W OBSADZIE
+    // 6. WYSTĘPY W OBSADZIE
     const progiWystepow = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
     progiWystepow.forEach(prog => {
       const aktualny = Math.min(staty.występyObsada, prog);
@@ -243,7 +300,10 @@ export default function Osiagniecia({ profile }) {
         <div>
           <h2 style={{ color: '#1e293b', margin: '0 0 5px 0', fontSize: '20px' }}>Twoje Osiągnięcia i Medale 🏆</h2>
           <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>
-            Próby sekcyjne, koncerty, obsady oraz akcje walizkowe! Streak: <strong style={{ color: '#8b5cf6' }}>🔥 {staty.streak} prób</strong> | Walizki: <strong style={{ color: '#0284c7' }}>🧳 {staty.liczbaWalizek}</strong>
+            Próby sekcyjne, koncerty, walizki oraz delegacje kwiatowe! 
+            Streak: <strong style={{ color: '#8b5cf6' }}>🔥 {staty.streak} prób</strong> | 
+            Walizki: <strong style={{ color: '#0284c7' }}>🧳 {staty.liczbaWalizek}</strong> | 
+            Kwiatki: <strong style={{ color: '#db2777' }}>🌸 {staty.liczbaKwiatkow}</strong>
           </p>
         </div>
         <div style={{ padding: '8px 16px', backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '20px', color: '#15803d', fontWeight: 'bold', fontSize: '14px' }}>
@@ -303,7 +363,7 @@ export default function Osiagniecia({ profile }) {
                     style={{ 
                       width: odznaka.zdobyte ? '100%' : `${Math.min(100, Math.round((parseInt(odznaka.postęp.split('/')[0], 10) / parseInt(odznaka.postęp.split('/')[1], 10)) * 100))}%`, 
                       height: '100%', 
-                      backgroundColor: odznaka.zdobyte ? '#10b981' : '#38bdf8',
+                      backgroundColor: odznaka.zdobyte ? '#10b981' : (odznaka.kategoria === 'Kwiatki i Delegacje' ? '#ec4899' : '#38bdf8'),
                       transition: 'width 0.4s ease'
                     }} 
                   />
