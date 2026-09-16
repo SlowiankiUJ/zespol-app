@@ -9,6 +9,7 @@ import PodgladObecnosciCzlonka from './PodgladObecnosciCzlonka';
 import Koncerty from './Koncerty';
 import Kwiatki from './Kwiatki';
 import Wino from './Wino';
+import Skladki from './Skladki';
 import ZarzadzanieCzlonkami from './ZarzadzanieCzlonkami';
 import OneSignal from 'react-onesignal';
 import Aktualnosci from './Aktualnosci';
@@ -272,6 +273,7 @@ export default function App() {
             <button onClick={() => setAktywnaZakladka('koncerty')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'koncerty' ? '#8b5cf6' : '#f8fafc', color: aktywnaZakladka === 'koncerty' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>🎻 Koncerty</button>
             <button onClick={() => setAktywnaZakladka('kwiatki')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'kwiatki' ? '#db2777' : '#f8fafc', color: aktywnaZakladka === 'kwiatki' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>🌸 Kwiatki</button>
             <button onClick={() => setAktywnaZakladka('wino')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'wino' ? '#991b1b' : '#f8fafc', color: aktywnaZakladka === 'wino' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>🍷 Wino</button>
+            <button onClick={() => setAktywnaZakladka('skladki')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'skladki' ? '#059669' : '#f8fafc', color: aktywnaZakladka === 'skladki' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>💶 Składki</button>
             <button onClick={() => setAktywnaZakladka('moje_statystyki')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'moje_statystyki' ? '#8b5cf6' : '#f8fafc', color: aktywnaZakladka === 'moje_statystyki' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>📊 Moja frekwencja</button>
             <button onClick={() => setAktywnaZakladka('profil')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'profil' ? '#8b5cf6' : '#f8fafc', color: aktywnaZakladka === 'profil' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>⚙️ Mój profil</button>
             <button onClick={() => setAktywnaZakladka('osiagniecia')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'osiagniecia' ? '#8b5cf6' : '#f8fafc', color: aktywnaZakladka === 'osiagniecia' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>🏆 Osiągnięcia</button>
@@ -285,6 +287,7 @@ export default function App() {
             <button onClick={() => setAktywnaZakladka('aktualnosci')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'aktualnosci' ? '#d97706' : '#f8fafc', color: aktywnaZakladka === 'aktualnosci' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>📢 Aktualności</button>
             <button onClick={() => setAktywnaZakladka('koncerty')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'koncerty' ? '#d97706' : '#f8fafc', color: aktywnaZakladka === 'koncerty' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>🎻 Koncerty</button>
             <button onClick={() => setAktywnaZakladka('kwiatki')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'kwiatki' ? '#db2777' : '#f8fafc', color: aktywnaZakladka === 'kwiatki' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>🌸 Kwiatki</button>
+            <button onClick={() => setAktywnaZakladka('skladki')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'skladki' ? '#059669' : '#f8fafc', color: aktywnaZakladka === 'skladki' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>💶 Składki</button>
           </>
         )}
 
@@ -296,6 +299,7 @@ export default function App() {
             <button onClick={() => setAktywnaZakladka('czlonkowie')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'czlonkowie' ? '#3182ce' : '#f8fafc', color: aktywnaZakladka === 'czlonkowie' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>👥 Członkowie</button>
             <button onClick={() => setAktywnaZakladka('koncerty')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'koncerty' ? '#3182ce' : '#f8fafc', color: aktywnaZakladka === 'koncerty' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>🎻 Koncerty</button>
             <button onClick={() => setAktywnaZakladka('kwiatki')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'kwiatki' ? '#db2777' : '#f8fafc', color: aktywnaZakladka === 'kwiatki' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>🌸 Kwiatki</button>
+            <button onClick={() => setAktywnaZakladka('skladki')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'skladki' ? '#059669' : '#f8fafc', color: aktywnaZakladka === 'skladki' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>💶 Składki</button>
             <button onClick={() => setAktywnaZakladka('admin')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'admin' ? '#3182ce' : '#f8fafc', color: aktywnaZakladka === 'admin' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>🛠️ Panel kadry i weryfikacji</button>
           </>
         )}
@@ -311,6 +315,7 @@ export default function App() {
         {aktywnaZakladka === 'koncerty' && <Koncerty profile={profile} />}
         {aktywnaZakladka === 'kwiatki' && <Kwiatki profile={profile} />}
         {aktywnaZakladka === 'wino' && profile?.rola === 'członek' && <Wino profile={profile} />}
+        {aktywnaZakladka === 'skladki' && <Skladki profile={profile} />}
         {aktywnaZakladka === 'moje_statystyki' && profile?.rola === 'członek' && <MojaFrekwencja profile={profile} />}
         {aktywnaZakladka === 'profil' && profile?.rola === 'członek' && <PodgladCzlonka profile={profile} />}
         {aktywnaZakladka === 'admin' && profile?.rola === 'kierownik' && <AdminPanel profile={profile} />}
