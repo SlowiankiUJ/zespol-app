@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
+import { pobierzStylSekcji } from './kolory';
 
 const oczyscTekst = (str) => {
   if (!str) return '';
@@ -13,20 +14,20 @@ const oczyscTekst = (str) => {
 };
 
 const RenderAvatar = ({ url }) => (
-  <div style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: '#e2e8f0', overflow: 'hidden', display: 'flex', justifyContent: 'center', alignItems: 'center', flexShrink: 0 }}>
-    {url ? <img src={url} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: '13px' }}>👤</span>}
+  <div style={{ width: '30px', height: '30px', borderRadius: '50%', backgroundColor: '#e2e8f0', overflow: 'hidden', display: 'flex', justifyContent: 'center', alignItems: 'center', flexShrink: 0 }}>
+    {url ? <img src={url} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: '14px' }}>👤</span>}
   </div>
 );
 
 export default function TopFrekwencja() {
-  const [liderzy, setLiderzy] = useState([]);
+  const [liderzySekcji, setLiderzySekcji] = useState({ balet: [], chór: [], kapela: [] });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    obliczRanking();
+    obliczRankingSekcji();
   }, []);
 
-  const obliczRanking = async () => {
+  const obliczRankingSekcji = async () => {
     try {
       // 1. Pobieramy aktywnych członków
       const { data: czlonkowie, error: czlonkowieError } = await supabase
@@ -37,7 +38,7 @@ export default function TopFrekwencja() {
 
       if (czlonkowieError) throw czlonkowieError;
 
-      // 2. Pobieramy wszystkie próby
+      // 2. Pobieramy próby
       const { data: proby, error: probyError } = await supabase
         .from('proby')
         .select('id, sekcja, data_czas');
@@ -67,17 +68,24 @@ export default function TopFrekwencja() {
         userDeklaracjeMap[d.id_uzytkownika].push(d);
       });
 
-      const wyniki = [];
+      // Kontener na wyniki per sekcja
+      const grupy = {
+        balet: [],
+        chor: [],
+        kapela: []
+      };
 
       (czlonkowie || []).forEach(czlonek => {
         const glownaSekcja = oczyscTekst(czlonek.sekcja);
+        if (!grupy[glownaSekcja]) return;
+
         const userDeks = userDeklaracjeMap[czlonek.id] || [];
 
         let ob = 0;
         let tot = 0;
-        let aktualnyStreak = 0;
+        let streak = 0;
 
-        // FILTR: Zliczamy TYLKO obecności z prób macierzystej sekcji danego członka
+        // FILTR: TYLKO i wyłącznie próby macierzystej sekcji danego członka
         const wlasneWpisy = userDeks
           .map(d => {
             const info = probyMap[String(d.id_proby)];
@@ -104,94 +112,143 @@ export default function TopFrekwencja() {
           .sort((a, b) => new Date(b.data_czas) - new Date(a.data_czas));
 
         for (const item of posortowane) {
-          if (item.obecny === true) aktualnyStreak++;
+          if (item.obecny === true) streak++;
           else if (item.obecny === false) break;
         }
 
         const procent = tot > 0 ? Math.round((ob / tot) * 100) : 0;
 
-        if (tot >= 1) {
-          wyniki.push({
+        // Do rankingu wliczamy osoby, które mają przynajmniej 1 sprawdzoną próbę
+        if (tot > 0) {
+          grupy[glownaSekcja].push({
             id: czlonek.id,
             imie_nazwisko: czlonek.imie_nazwisko,
             sekcja: czlonek.sekcja,
             glos: czlonek.glos,
             avatar_url: czlonek.avatar_url,
-            procent: procent,
+            procent,
             obecny: ob,
             total: tot,
-            streak: aktualnyStreak
+            streak
           });
         }
       });
 
-      // Sortujemy malejąco: najpierw po frekwencji %, potem po liczbie obecności, potem po streaku
-      wyniki.sort((a, b) => {
+      // Funkcja sortująca wewnątrz sekcji: % frekwencji -> liczba obecności -> streak
+      const sortuj = (arr) => arr.sort((a, b) => {
         if (b.procent !== a.procent) return b.procent - a.procent;
         if (b.obecny !== a.obecny) return b.obecny - a.obecny;
         return b.streak - a.streak;
-      });
+      }).slice(0, 3); // TOP 3
 
-      setLiderzy(wyniki.slice(0, 5));
+      setLiderzySekcji({
+        balet: sortuj(grupy.balet),
+        chór: sortuj(grupy.chor),
+        kapela: sortuj(grupy.kapela)
+      });
     } catch (err) {
-      console.error('Błąd obliczania rankingu TopFrekwencja:', err);
+      console.error('Błąd obliczania rankingu sekcji:', err);
     } finally {
       setLoading(false);
     }
   };
 
   if (loading) {
-    return <div style={{ padding: '10px', fontSize: '13px', color: '#64748b' }}>Ładowanie rankingu... 🌟</div>;
+    return <div style={{ padding: '15px', color: '#64748b', fontSize: '13px' }}>Ładowanie rankingu TOP 3 sekcji... 🌟</div>;
   }
 
-  if (liderzy.length === 0) {
-    return null;
-  }
+  const kolumnySekcji = [
+    { klucz: 'balet', tytul: 'Balet 🩰' },
+    { klucz: 'chór', tytul: 'Chór 🎶' },
+    { klucz: 'kapela', tytul: 'Kapela 🎻' }
+  ];
+
+  const medale = ['🥇', '🥈', '🥉'];
 
   return (
-    <div style={{ marginBottom: '25px', padding: '18px', backgroundColor: '#fdfcfe', borderRadius: '10px', border: '1px solid #e9d5ff', boxShadow: '0 2px 4px rgba(139, 92, 246, 0.05)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-        <span style={{ fontSize: '20px' }}>🌟</span>
-        <h3 style={{ margin: 0, fontSize: '16px', color: '#1e293b' }}>Liderzy Oficjalnej Frekwencji</h3>
-        <span style={{ fontSize: '11px', color: '#8b5cf6', backgroundColor: '#ede9fe', padding: '2px 8px', borderRadius: '10px', fontWeight: 'bold' }}>Tylko próby macierzyste</span>
+    <div style={{ marginBottom: '30px', padding: '20px', backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
+        <h3 style={{ margin: 0, fontSize: '18px', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span>🏆</span> Najwyższa frekwencja sekcyjna (TOP 3)
+        </h3>
+        <span style={{ fontSize: '11px', color: '#64748b', backgroundColor: '#f1f5f9', padding: '4px 10px', borderRadius: '12px', fontWeight: 'bold' }}>
+          Tylko oficjalne próby sekcji
+        </span>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
-        {liderzy.map((osoba, index) => {
-          const medale = ['🥇', '🥈', '🥉'];
+      {/* 3 KOLUMNY DLA 3 SEKCJI */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '15px' }}>
+        {kolumnySekcji.map(({ klucz, tytul }) => {
+          const stylSekcji = pobierzStylSekcji(klucz);
+          const liderzy = liderzySekcji[klucz] || [];
+
           return (
             <div 
-              key={osoba.id} 
+              key={klucz} 
               style={{ 
-                padding: '10px 14px', 
-                backgroundColor: index === 0 ? '#faf5ff' : '#f8fafc', 
-                borderRadius: '8px', 
-                border: index === 0 ? '1px solid #c084fc' : '1px solid #e2e8f0', 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: 'space-between' 
+                backgroundColor: stylSekcji.jasny, 
+                borderRadius: '10px', 
+                border: `1px solid ${stylSekcji.border}`, 
+                padding: '14px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '10px'
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
-                <span style={{ fontSize: '16px' }}>{medale[index] || `#${index + 1}`}</span>
-                <RenderAvatar url={osoba.avatar_url} />
-                <div style={{ overflow: 'hidden' }}>
-                  <span style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {osoba.imie_nazwisko}
-                  </span>
-                  <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase' }}>
-                    {osoba.sekcja}
-                  </span>
+              <div style={{ borderBottom: `2px solid ${stylSekcji.glowny}`, paddingBottom: '6px', marginBottom: '2px' }}>
+                <h4 style={{ margin: 0, fontSize: '15px', color: stylSekcji.glowny, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  {tytul}
+                </h4>
+              </div>
+
+              {liderzy.length === 0 ? (
+                <p style={{ margin: '10px 0', fontSize: '12px', color: '#94a3b8', fontStyle: 'italic' }}>
+                  Brak sprawdzonych prób w tej sekcji.
+                </p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {liderzy.map((osoba, idx) => (
+                    <div 
+                      key={osoba.id} 
+                      style={{ 
+                        padding: '8px 10px', 
+                        backgroundColor: '#ffffff', 
+                        borderRadius: '6px', 
+                        border: '1px solid #e2e8f0', 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'space-between',
+                        gap: '8px',
+                        boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
+                        <span style={{ fontSize: '16px', flexShrink: 0 }}>{medale[idx]}</span>
+                        <RenderAvatar url={osoba.avatar_url} />
+                        <div style={{ overflow: 'hidden' }}>
+                          <span style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {osoba.imie_nazwisko}
+                          </span>
+                          {osoba.glos && (
+                            <span style={{ display: 'block', fontSize: '10px', color: '#64748b' }}>
+                              {osoba.glos}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <span style={{ display: 'block', fontSize: '13px', fontWeight: '900', color: stylSekcji.glowny }}>
+                          {osoba.procent}%
+                        </span>
+                        <span style={{ fontSize: '10px', color: '#94a3b8' }}>
+                          {osoba.obecny}/{osoba.total}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              </div>
-              <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: '6px' }}>
-                <span style={{ display: 'block', fontSize: '14px', fontWeight: '900', color: '#8b5cf6' }}>
-                  {osoba.procent}%
-                </span>
-                <span style={{ fontSize: '10px', color: '#94a3b8' }}>
-                  {osoba.obecny}/{osoba.total}
-                </span>
-              </div>
+              )}
             </div>
           );
         })}
