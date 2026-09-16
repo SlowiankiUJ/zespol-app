@@ -13,6 +13,7 @@ export default function PodgladObecnosciCzlonka({ profile }) {
   const [proby, setProby] = useState([]);
   const [czlonkowieGlowni, setCzlonkowieGlowni] = useState([]);
   const [czlonkowieGoscinni, setCzlonkowieGoscinni] = useState([]);
+  const [wszyscyCzlonkowieZespołu, setWszyscyCzlonkowieZespołu] = useState([]); // Do prób generalnych
   const [deklaracje, setDeklaracje] = useState({});
   const [loading, setLoading] = useState(true);
 
@@ -27,8 +28,7 @@ export default function PodgladObecnosciCzlonka({ profile }) {
     try {
       const glownaSekcja = profile.sekcja;
 
-      // Obliczamy początek bieżącego dnia (godzina 00:00:00), aby próby z dzisiaj były nadal widoczne, 
-      // a wszystkie starsze/minione próby zostały zarchiwizowane z widoku członka.
+      // Obliczamy początek bieżącego dnia (godzina 00:00:00)
       const dzis = new Date();
       dzis.setHours(0, 0, 0, 0);
       const isoPoczatekDzis = dzis.toISOString();
@@ -39,7 +39,6 @@ export default function PodgladObecnosciCzlonka({ profile }) {
         sekcjeDoPobrania.push('generalna');
       }
 
-      // Sprawdzamy też ewentualne dodatkowe sekcje gościnne członka
       const { data: dodatkowe } = await supabase
         .from('dodatkowe_sekcje')
         .select('sekcja')
@@ -82,7 +81,19 @@ export default function PodgladObecnosciCzlonka({ profile }) {
         setCzlonkowieGlowni(czlonkowieData);
       }
 
-      // 3. Osoby gościnne z innych sekcji
+      // 3. WSZYSCY członkowie zespołu (dla prób generalnych)
+      const { data: wszyscyData } = await supabase
+        .from('profiles')
+        .select('id, imie_nazwisko, sekcja, glos, avatar_url')
+        .eq('status', 'zatwierdzony')
+        .eq('rola', 'członek')
+        .order('imie_nazwisko', { ascending: true });
+
+      if (wszyscyData) {
+        setWszyscyCzlonkowieZespołu(wszyscyData);
+      }
+
+      // 4. Osoby gościnne z innych sekcji
       const { data: dodatkoweData } = await supabase
         .from('dodatkowe_sekcje')
         .select('id_uzytkownika')
@@ -182,7 +193,6 @@ export default function PodgladObecnosciCzlonka({ profile }) {
   return (
     <div style={{ marginTop: '20px', padding: '25px', border: '1px solid #e2e8f0', borderRadius: '12px', backgroundColor: '#ffffff', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
       
-      {/* RANKING FREKWENCJI (TYLKO Z OFICJALNYCH PRÓB) */}
       <TopFrekwencja />
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginTop: '30px', marginBottom: '5px' }}>
@@ -193,7 +203,7 @@ export default function PodgladObecnosciCzlonka({ profile }) {
       </div>
 
       <p style={{ color: '#64748b', fontSize: '14px', marginBottom: '20px' }}>
-        Podgląd deklaracji obecności Twojej sekcji oraz prób generalnych: <strong style={{ textTransform: 'uppercase', color: '#0f172a' }}>{profile.sekcja}</strong>
+        Podgląd deklaracji obecności Twojej sekcji oraz prób generalnych.
       </p>
 
       {loading ? (
@@ -209,6 +219,7 @@ export default function PodgladObecnosciCzlonka({ profile }) {
           {proby.map(proba => {
             const stylSekcji = pobierzStylSekcji(proba.sekcja);
             const deklaracjeTejProby = deklaracje[proba.id] || {};
+            const isGeneralna = proba.sekcja === 'generalna';
 
             return (
               <div key={proba.id} style={{ 
@@ -223,7 +234,7 @@ export default function PodgladObecnosciCzlonka({ profile }) {
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
                   <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold', backgroundColor: stylSekcji.glowny, color: 'white', textTransform: 'uppercase' }}>
-                    {proba.sekcja === 'generalna' ? '🎭 Próba generalna' : proba.sekcja}
+                    {isGeneralna ? '🎭 Próba generalna (Cały zespół)' : proba.sekcja}
                   </span>
                 </div>
                 <h4 style={{ margin: '0 0 5px 0', color: '#1e293b', fontSize: '16px' }}>
@@ -234,41 +245,99 @@ export default function PodgladObecnosciCzlonka({ profile }) {
                 </p>
 
                 <div style={{ backgroundColor: '#ffffff', padding: '15px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
-                  <h5 style={{ margin: '0 0 12px 0', fontSize: '14px', color: '#1e293b' }}>Lista obecności sekcji:</h5>
+                  <h5 style={{ margin: '0 0 12px 0', fontSize: '14px', color: '#1e293b' }}>
+                    {isGeneralna ? 'Lista obecności całego zespołu:' : 'Lista obecności sekcji:'}
+                  </h5>
 
-                  {profile.sekcja === 'chór' ? (
-                    ['Sopran', 'Alt', 'Tenor', 'Bas'].map(glosName => {
-                      const osobyGlosu = czlonkowieGlowni.filter(c => (c.glos || 'Sopran') === glosName);
-                      if (osobyGlosu.length === 0) return null;
+                  {isGeneralna ? (
+                    // WIDOK DLA PRÓBY GENERALNEJ: Podział na Balet, Chór (z głosami) i Kapelę
+                    <div>
+                      {/* BALET */}
+                      {(() => {
+                        const baletOsoby = wszyscyCzlonkowieZespołu.filter(c => c.sekcja === 'balet');
+                        if (baletOsoby.length === 0) return null;
+                        return (
+                          <div key="balet" style={{ marginBottom: '15px' }}>
+                            <p style={{ fontSize: '12px', fontWeight: 'bold', color: '#3182ce', margin: '0 0 6px 0', textTransform: 'uppercase' }}>
+                              🩰 Balet ({baletOsoby.length}):
+                            </p>
+                            <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              {baletOsoby.map(czlonek => renderujOsobe(czlonek, deklaracjeTejProby[czlonek.id], false))}
+                            </ul>
+                          </div>
+                        );
+                      })()}
 
-                      return (
-                        <div key={glosName} style={{ marginBottom: '15px' }}>
-                          <p style={{ fontSize: '12px', fontWeight: 'bold', color: '#d97706', margin: '0 0 6px 0', textTransform: 'uppercase' }}>
-                            {glosName} ({osobyGlosu.length}):
-                          </p>
+                      {/* CHÓR (z podziałem na głosy) */}
+                      {['Sopran', 'Alt', 'Tenor', 'Bas'].map(glosName => {
+                        const osobyGlosu = wszyscyCzlonkowieZespołu.filter(c => c.sekcja === 'chór' && (c.glos || 'Sopran') === glosName);
+                        if (osobyGlosu.length === 0) return null;
+                        return (
+                          <div key={glosName} style={{ marginBottom: '15px' }}>
+                            <p style={{ fontSize: '12px', fontWeight: 'bold', color: '#d97706', margin: '0 0 6px 0', textTransform: 'uppercase' }}>
+                              🎤 Chór – {glosName} ({osobyGlosu.length}):
+                            </p>
+                            <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              {osobyGlosu.map(czlonek => renderujOsobe(czlonek, deklaracjeTejProby[czlonek.id], false))}
+                            </ul>
+                          </div>
+                        );
+                      })}
+
+                      {/* KAPELA */}
+                      {(() => {
+                        const kapelaOsoby = wszyscyCzlonkowieZespołu.filter(c => c.sekcja === 'kapela');
+                        if (kapelaOsoby.length === 0) return null;
+                        return (
+                          <div key="kapela" style={{ marginBottom: '15px' }}>
+                            <p style={{ fontSize: '12px', fontWeight: 'bold', color: '#10b981', margin: '0 0 6px 0', textTransform: 'uppercase' }}>
+                              🎻 Kapela ({kapelaOsoby.length}):
+                            </p>
+                            <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              {kapelaOsoby.map(czlonek => renderujOsobe(czlonek, deklaracjeTejProby[czlonek.id], false))}
+                            </ul>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  ) : (
+                    // WIDOK DLA ZWYKŁEJ PRÓBY SEKCYJNEJ
+                    <div>
+                      {profile.sekcja === 'chór' ? (
+                        ['Sopran', 'Alt', 'Tenor', 'Bas'].map(glosName => {
+                          const osobyGlosu = czlonkowieGlowni.filter(c => (c.glos || 'Sopran') === glosName);
+                          if (osobyGlosu.length === 0) return null;
+
+                          return (
+                            <div key={glosName} style={{ marginBottom: '15px' }}>
+                              <p style={{ fontSize: '12px', fontWeight: 'bold', color: '#d97706', margin: '0 0 6px 0', textTransform: 'uppercase' }}>
+                                {glosName} ({osobyGlosu.length}):
+                              </p>
+                              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                {osobyGlosu.map(czlonek => renderujOsobe(czlonek, deklaracjeTejProby[czlonek.id], false))}
+                              </ul>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <div style={{ marginBottom: '15px' }}>
                           <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                            {osobyGlosu.map(czlonek => renderujOsobe(czlonek, deklaracjeTejProby[czlonek.id], false))}
+                            {czlonkowieGlowni.map(czlonek => renderujOsobe(czlonek, deklaracjeTejProby[czlonek.id], false))}
                           </ul>
                         </div>
-                      );
-                    })
-                  ) : (
-                    <div style={{ marginBottom: '15px' }}>
-                      <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {czlonkowieGlowni.map(czlonek => renderujOsobe(czlonek, deklaracjeTejProby[czlonek.id], false))}
-                      </ul>
-                    </div>
-                  )}
+                      )}
 
-                  {/* Członkowie gościnni */}
-                  {czlonkowieGoscinni.length > 0 && (
-                    <div style={{ marginTop: '15px', borderTop: '1px dashed #cbd5e1', paddingTop: '12px' }}>
-                      <p style={{ fontSize: '12px', fontWeight: 'bold', color: '#8b5cf6', margin: '0 0 6px 0', textTransform: 'uppercase' }}>
-                        Członkowie gościnni (dodatkowa sekcja — bez wpływu na statystyki):
-                      </p>
-                      <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {czlonkowieGoscinni.map(gosc => renderujOsobe(gosc, deklaracjeTejProby[gosc.id], true))}
-                      </ul>
+                      {/* Członkowie gościnni */}
+                      {czlonkowieGoscinni.length > 0 && (
+                        <div style={{ marginTop: '15px', borderTop: '1px dashed #cbd5e1', paddingTop: '12px' }}>
+                          <p style={{ fontSize: '12px', fontWeight: 'bold', color: '#8b5cf6', margin: '0 0 6px 0', textTransform: 'uppercase' }}>
+                            Członkowie gościnni (dodatkowa sekcja — bez wpływu na statystyki):
+                          </p>
+                          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            {czlonkowieGoscinni.map(gosc => renderujOsobe(gosc, deklaracjeTejProby[gosc.id], true))}
+                          </ul>
+                        </div>
+                      )}
                     </div>
                   )}
 
