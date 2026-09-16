@@ -6,7 +6,8 @@ export default function Osiagniecia({ profile }) {
     koncertyUdział: 0,
     występyObsada: 0,
     miesieczna100Frekwencja: false,
-    streak: 0
+    streak: 0,
+    liczbaWalizek: 0
   });
   const [loading, setLoading] = useState(true);
 
@@ -37,7 +38,15 @@ export default function Osiagniecia({ profile }) {
 
       const liczbaWystepow = obsadaData ? obsadaData.length : 0;
 
-      // 3. Próby i obecności
+      // 3. Walizki - suma załadunków i rozładunków (przed i po koncercie)
+      const { data: walizkiData } = await supabase
+        .from('koncert_walizki')
+        .select('id')
+        .eq('id_uzytkownika', profile.id);
+
+      const lacznieWalizki = walizkiData ? walizkiData.length : 0;
+
+      // 4. Próby i obecności
       const { data: probyList } = await supabase
         .from('proby')
         .select('id, data_czas, sekcja')
@@ -100,7 +109,8 @@ export default function Osiagniecia({ profile }) {
         koncertyUdział: liczbaKoncertow,
         występyObsada: liczbaWystepow,
         miesieczna100Frekwencja: ma100PrzezMiesiac,
-        streak: aktualnyStreak
+        streak: aktualnyStreak,
+        liczbaWalizek: lacznieWalizki
       });
     } catch (err) {
       console.error('Błąd obliczania osiągnięć:', err);
@@ -112,6 +122,7 @@ export default function Osiagniecia({ profile }) {
   const generujOdznaki = () => {
     const odznaki = [];
 
+    // 1. STREAK PRÓB
     const progiStreaka = [
       { prog: 5, tytul: 'Rozgrzewka w tańcu', opis: 'Starasz się, oby tak dalej! Pęcherze na stopach powoli stają się Twoimi najlepszymi przyjaciółmi.', ikona: '👟' },
       { prog: 15, tytul: 'Żelazna kondycja', opis: 'Przeżyłeś 15 prób z rzędu. Kierownik zaczyna się zastanawiać, czy Ty w ogóle sypiasz w domu.', ikona: '🪵' },
@@ -132,6 +143,7 @@ export default function Osiagniecia({ profile }) {
       });
     });
 
+    // 2. FREKWENCJA MIESIĘCZNA
     odznaki.push({
       tytuł: 'Perfekcjonista miesiąca',
       opis: 'Utrzymuj 100% frekwencji na oficjalnych próbach przez cały miesiąc (min. 3 próby).',
@@ -141,6 +153,53 @@ export default function Osiagniecia({ profile }) {
       kategoria: 'Frekwencja'
     });
 
+    // 3. NOWE OSIĄGNIĘCIA: WALIZKI (1, 10, 15, 30, 50)
+    const progiWalizek = [
+      { 
+        prog: 1, 
+        tytul: 'Pierwszy ciężar zespołu', 
+        opis: 'Pierwsza walizka załadowana! Plecy lekko pieką, ale krew już buzuje. Dobry początek kariery bagażowego.', 
+        ikona: '🧳' 
+      },
+      { 
+        prog: 10, 
+        tytul: 'Mistrz Bagażnika Autokaru', 
+        opis: '10 walizek noszonych przed lub po! Znasz już wagę każdego stroju i potrafisz upchnąć kufer w luku z zamkniętymi oczami.', 
+        ikona: '🚌' 
+      },
+      { 
+        prog: 15, 
+        tytul: 'Zaufany Tragarz Inspektora', 
+        opis: '15 kursów z walizami. Inspektor na Twój widok tylko kiwa głową z uznaniem – robota pali się w rękach!', 
+        ikona: '💪' 
+      },
+      { 
+        prog: 30, 
+        tytul: 'Chodzący Wózek Widłowy', 
+        opis: '30 razy na walizkach! Twoje przedramiona są twardsze niż podeszwy butów do tańca, a siłownia to dla Ciebie formalność.', 
+        ikona: '🏗️' 
+      },
+      { 
+        prog: 50, 
+        tytul: 'Tytan ze Skały i Żelaza', 
+        opis: '50 zaliczonych walizek! Mięśnie wykute z litej skały, a kufry nosisz po dwa pod pachą. Żaden wyjazd bez Ciebie nie ruszy!', 
+        ikona: '🗿' 
+      }
+    ];
+
+    progiWalizek.forEach(w => {
+      const aktualny = Math.min(staty.liczbaWalizek, w.prog);
+      odznaki.push({
+        tytuł: `${w.tytul} (${w.prog} ${w.prog === 1 ? 'akcja' : w.prog < 5 ? 'akcje' : 'akcji'})`,
+        opis: w.opis,
+        ikona: w.ikona,
+        zdobyte: staty.liczbaWalizek >= w.prog,
+        postęp: `${aktualny}/${w.prog}`,
+        kategoria: 'Logistyka i Walizki'
+      });
+    });
+
+    // 4. KONCERTY
     const progiKoncertow = [1, 5, 10, 25, 50, 100];
     progiKoncertow.forEach(prog => {
       const aktualny = Math.min(staty.koncertyUdział, prog);
@@ -154,6 +213,7 @@ export default function Osiagniecia({ profile }) {
       });
     });
 
+    // 5. WYSTĘPY W OBSADZIE
     const progiWystepow = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
     progiWystepow.forEach(prog => {
       const aktualny = Math.min(staty.występyObsada, prog);
@@ -183,7 +243,7 @@ export default function Osiagniecia({ profile }) {
         <div>
           <h2 style={{ color: '#1e293b', margin: '0 0 5px 0', fontSize: '20px' }}>Twoje Osiągnięcia i Medale 🏆</h2>
           <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>
-            Zbieraj odznaki za oficjalne próby sekcji <strong style={{ textTransform: 'uppercase', color: '#8b5cf6' }}>{profile.sekcja}</strong> oraz koncerty w składzie! Aktualny streak: <strong style={{ color: '#8b5cf6' }}>🔥 {staty.streak} prób</strong>
+            Próby sekcyjne, koncerty, obsady oraz akcje walizkowe! Streak: <strong style={{ color: '#8b5cf6' }}>🔥 {staty.streak} prób</strong> | Walizki: <strong style={{ color: '#0284c7' }}>🧳 {staty.liczbaWalizek}</strong>
           </p>
         </div>
         <div style={{ padding: '8px 16px', backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '20px', color: '#15803d', fontWeight: 'bold', fontSize: '14px' }}>
@@ -241,9 +301,9 @@ export default function Osiagniecia({ profile }) {
                 <div style={{ width: '100%', height: '8px', backgroundColor: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
                   <div 
                     style={{ 
-                      width: odznaka.zdobyte ? '100%' : '0%', 
+                      width: odznaka.zdobyte ? '100%' : `${Math.min(100, Math.round((parseInt(odznaka.postęp.split('/')[0], 10) / parseInt(odznaka.postęp.split('/')[1], 10)) * 100))}%`, 
                       height: '100%', 
-                      backgroundColor: odznaka.zdobyte ? '#10b981' : '#cbd5e1',
+                      backgroundColor: odznaka.zdobyte ? '#10b981' : '#38bdf8',
                       transition: 'width 0.4s ease'
                     }} 
                   />
