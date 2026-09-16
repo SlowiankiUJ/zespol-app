@@ -90,7 +90,7 @@ export default function Aktualnosci({ profile }) {
   };
 
   const oznaczJakoOdczytane = async (aktualnoscId) => {
-    if (profile && (profile.rola === 'członek' || profile.rola === 'pracownik')) {
+    if (profile && (profile.rola === 'członek' || profile.rola === 'pracownik' || profile.rola === 'kierownik')) {
       await supabase
         .from('aktualnosci_odczyty')
         .upsert([{ id_aktualnosci: aktualnoscId, id_uzytkownika: profile.id }], { onConflict: 'id_aktualnosci, id_uzytkownika' });
@@ -138,9 +138,10 @@ export default function Aktualnosci({ profile }) {
     }
   };
 
-  const usunWpis = async (id) => {
+  // Autor może usunąć swój wpis, a kierownik może usunąć dowolny
+  const usunWpis = async (wpis) => {
     if (!window.confirm('Czy na pewno chcesz usunąć tę aktualność?')) return;
-    const { error } = await supabase.from('aktualnosci').delete().eq('id', id);
+    const { error } = await supabase.from('aktualnosci').delete().eq('id', wpis.id);
     if (!error) pobierzAktualnosci();
   };
 
@@ -151,26 +152,24 @@ export default function Aktualnosci({ profile }) {
     <div style={{ marginTop: '20px', padding: '25px', border: '1px solid #e2e8f0', borderRadius: '12px', backgroundColor: '#ffffff', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
       <h2 style={{ color: '#1e293b', marginBottom: '20px', fontSize: '20px' }}>Aktualności i Komunikaty 📢</h2>
 
-      {/* Formularz dodawania wpisu - TYLKO DLA KIEROWNIKA */}
-      {isKierownik && (
-        <div style={{ marginBottom: '30px', padding: '20px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-          <h3 style={{ margin: '0 0 15px 0', fontSize: '16px', color: '#334155' }}>Dodaj nowy komunikat</h3>
-          <form onSubmit={dodajWpis} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <div>
-              <label style={labelStyle}>Nagłówek:</label>
-              <input type="text" placeholder="Tytuł wiadomości" value={tytul} onChange={(e) => setTytul(e.target.value)} required style={inputStyle} />
-            </div>
-            <div>
-              <label style={labelStyle}>Treść:</label>
-              <textarea placeholder="Treść komunikatu dla zespołu..." value={tresc} onChange={(e) => setTresc(e.target.value)} rows="4" required style={{...inputStyle, resize: 'vertical'}} />
-            </div>
-            <button type="submit" style={{ padding: '12px', backgroundColor: '#3182ce', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}>
-              Opublikuj aktualność 🚀
-            </button>
-          </form>
-          {komunikat && <p style={{ color: komunikat.includes('Błąd') ? '#dc3545' : 'green', marginTop: '10px', fontWeight: '500' }}>{komunikat}</p>}
-        </div>
-      )}
+      {/* Formularz dodawania wpisu - DOSTĘPNY DLA WSZYSTKICH CZŁONKÓW */}
+      <div style={{ marginBottom: '30px', padding: '20px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+        <h3 style={{ margin: '0 0 15px 0', fontSize: '16px', color: '#334155' }}>Dodaj nowy komunikat lub ogłoszenie</h3>
+        <form onSubmit={dodajWpis} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div>
+            <label style={labelStyle}>Nagłówek:</label>
+            <input type="text" placeholder="Tytuł wiadomości" value={tytul} onChange={(e) => setTytul(e.target.value)} required style={inputStyle} />
+          </div>
+          <div>
+            <label style={labelStyle}>Treść:</label>
+            <textarea placeholder="Napisz coś dla zespołu..." value={tresc} onChange={(e) => setTresc(e.target.value)} rows="4" required style={{...inputStyle, resize: 'vertical'}} />
+          </div>
+          <button type="submit" style={{ padding: '12px', backgroundColor: '#3182ce', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}>
+            Opublikuj aktualność 🚀
+          </button>
+        </form>
+        {komunikat && <p style={{ color: komunikat.includes('Błąd') ? '#dc3545' : 'green', marginTop: '10px', fontWeight: '500' }}>{komunikat}</p>}
+      </div>
 
       {wpisy.length === 0 ? (
         <p style={{ color: '#718096' }}>Brak aktualności.</p>
@@ -181,8 +180,9 @@ export default function Aktualnosci({ profile }) {
             const czyRozwinieteStaty = rozwinieteStatystyki[wpis.id];
             const komentarzeWpisu = komentarzeMap[wpis.id] || [];
             const autor = wpis.profiles;
+            const czyMogęUsunąć = isKierownik || wpis.id_autora === profile?.id;
             
-            if (profile?.rola === 'członek' || profile?.rola === 'pracownik') {
+            if (profile) {
               oznaczJakoOdczytane(wpis.id);
             }
 
@@ -192,11 +192,11 @@ export default function Aktualnosci({ profile }) {
                   <div>
                     <h3 style={{ margin: '0 0 4px 0', color: '#1e293b', fontSize: '18px' }}>{wpis.tytul}</h3>
                     <p style={{ margin: '0 0 10px 0', fontSize: '12px', color: '#64748b' }}>
-                      Opublikował/a: <strong style={{ color: '#475569' }}>{autor ? autor.imie_nazwisko : 'Kadra zespołu'}</strong> ({autor ? autor.rola : 'kierownik'}) • {new Date(wpis.created_at).toLocaleDateString('pl-PL')} o {new Date(wpis.created_at).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}
+                      Opublikował/a: <strong style={{ color: '#475569' }}>{autor ? autor.imie_nazwisko : 'Użytkownik'}</strong> ({autor?.rola === 'członek' ? autor?.sekcja : autor?.rola}) • {new Date(wpis.created_at).toLocaleDateString('pl-PL')} o {new Date(wpis.created_at).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}
                     </p>
                   </div>
-                  {isKierownik && (
-                    <button onClick={() => usunWpis(wpis.id)} style={{ padding: '5px 10px', backgroundColor: '#ef4444', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>Usuń 🗑️</button>
+                  {czyMogęUsunąć && (
+                    <button onClick={() => usunWpis(wpis)} style={{ padding: '5px 10px', backgroundColor: '#ef4444', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>Usuń 🗑️</button>
                   )}
                 </div>
 
