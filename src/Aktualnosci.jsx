@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
+import OneSignal from 'react-onesignal';
 
 export default function Aktualnosci({ profile }) {
   const [wpisy, setWpisy] = useState([]);
@@ -23,7 +24,6 @@ export default function Aktualnosci({ profile }) {
 
   const pobierzAktualnosci = async () => {
     try {
-      // Pobieramy aktualności wraz z danymi autora wpisu z tabeli profiles
       const { data, error } = await supabase
         .from('aktualnosci')
         .select('*, profiles:id_autora(imie_nazwisko, rola, sekcja, avatar_url)')
@@ -67,7 +67,6 @@ export default function Aktualnosci({ profile }) {
   const pobierzKomentarze = async (wpisIds) => {
     if (!wpisIds || wpisIds.length === 0) return;
     try {
-      // Pobieramy komentarze powiązane z aktualnościami wraz z profilem autora komentarza
       const { data, error } = await supabase
         .from('aktualnosci_komentarze')
         .select('*, profiles:id_uzytkownika(imie_nazwisko, rola, sekcja)')
@@ -100,7 +99,7 @@ export default function Aktualnosci({ profile }) {
   const dodajWpis = async (e) => {
     e.preventDefault();
     if (!tytul || !tresc) { alert('Wypełnij nagłówek i treść.'); return; }
-    setKomunikat('Publikowanie...');
+    setKomunikat('Publikowanie i wysyłanie powiadomień...');
 
     const { error } = await supabase.from('aktualnosci').insert([{
       tytul,
@@ -112,6 +111,21 @@ export default function Aktualnosci({ profile }) {
       setKomunikat('Błąd: ' + error.message);
     } else {
       setKomunikat('Opublikowano pomyślnie! ✅');
+      
+      // WYSYŁANIE POWIADOMIENIA PUSH DO WSZYSTKICH PRZEZ ONESIGNAL
+      try {
+        await fetch("/api/powiadomienie", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tytul: `Nowa aktualność: ${tytul} 📢`,
+            tresc: `${profile.imie_nazwisko} dodał(a) nowy komunikat. Sprawdź aplikację!`
+          })
+        });
+      } catch (err) {
+        console.error("Błąd wysyłania powiadomienia OneSignal:", err);
+      }
+
       setTytul('');
       setTresc('');
       pobierzAktualnosci();
@@ -138,7 +152,6 @@ export default function Aktualnosci({ profile }) {
     }
   };
 
-  // Autor może usunąć swój wpis, a kierownik może usunąć dowolny
   const usunWpis = async (wpis) => {
     if (!window.confirm('Czy na pewno chcesz usunąć tę aktualność?')) return;
     const { error } = await supabase.from('aktualnosci').delete().eq('id', wpis.id);
@@ -152,7 +165,6 @@ export default function Aktualnosci({ profile }) {
     <div style={{ marginTop: '20px', padding: '25px', border: '1px solid #e2e8f0', borderRadius: '12px', backgroundColor: '#ffffff', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
       <h2 style={{ color: '#1e293b', marginBottom: '20px', fontSize: '20px' }}>Aktualności i Komunikaty 📢</h2>
 
-      {/* Formularz dodawania wpisu - DOSTĘPNY DLA WSZYSTKICH CZŁONKÓW */}
       <div style={{ marginBottom: '30px', padding: '20px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
         <h3 style={{ margin: '0 0 15px 0', fontSize: '16px', color: '#334155' }}>Dodaj nowy komunikat lub ogłoszenie</h3>
         <form onSubmit={dodajWpis} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -165,7 +177,7 @@ export default function Aktualnosci({ profile }) {
             <textarea placeholder="Napisz coś dla zespołu..." value={tresc} onChange={(e) => setTresc(e.target.value)} rows="4" required style={{...inputStyle, resize: 'vertical'}} />
           </div>
           <button type="submit" style={{ padding: '12px', backgroundColor: '#3182ce', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}>
-            Opublikuj aktualność 🚀
+            Opublikuj aktualność i powiadom zespół 🚀
           </button>
         </form>
         {komunikat && <p style={{ color: komunikat.includes('Błąd') ? '#dc3545' : 'green', marginTop: '10px', fontWeight: '500' }}>{komunikat}</p>}
