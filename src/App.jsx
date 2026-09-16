@@ -97,21 +97,8 @@ export default function App() {
     }
   };
 
-  // FUNKCJA OBLICZANIA STREAKA (Z uwzględnieniem sekcji i dodatkowych sekcji)
   const obliczStreak = async (userId, sekcjaGlowna) => {
     try {
-      let mojeSekcje = [sekcjaGlowna];
-      
-      const { data: dodatkowe } = await supabase
-        .from('dodatkowe_sekcje')
-        .select('sekcja')
-        .eq('id_uzytkownika', userId)
-        .eq('status', 'zatwierdzony');
-
-      if (dodatkowe) {
-        dodatkowe.forEach(d => mojeSekcje.push(d.sekcja));
-      }
-
       const { data: deklaracje, error: dekError } = await supabase
         .from('deklaracje_obecnosci')
         .select('*')
@@ -138,7 +125,7 @@ export default function App() {
         }
       });
 
-      // Filtrujemy tylko obecności pasujące do głównej sekcji i zatwierdzonych dodatkowych
+      // TYLKO próby głównej sekcji (odrzucamy gościnne oraz generalne)
       const wpisyZUstalonaData = deklaracje
         .map(d => {
           const info = probaInfoMap[d.id_proby];
@@ -148,7 +135,7 @@ export default function App() {
             sekcja: info ? info.sekcja : null
           };
         })
-        .filter(item => item.data_proba && item.sekcja !== 'generalna' && mojeSekcje.includes(item.sekcja) && (item.obecny === true || item.obecny === false));
+        .filter(item => item.data_proba && item.sekcja === sekcjaGlowna && (item.obecny === true || item.obecny === false));
 
       if (wpisyZUstalonaData.length === 0) {
         setStreak(0);

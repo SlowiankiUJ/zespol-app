@@ -18,18 +18,6 @@ export default function Osiagniecia({ profile }) {
 
   const obliczOsiagniecia = async () => {
     try {
-      // POBIERAMY SEKCJE GŁÓWNĄ I DODATKOWE
-      let mojeSekcje = [profile.sekcja];
-      const { data: dodatkowe } = await supabase
-        .from('dodatkowe_sekcje')
-        .select('sekcja')
-        .eq('id_uzytkownika', profile.id)
-        .eq('status', 'zatwierdzony');
-        
-      if (dodatkowe) {
-        dodatkowe.forEach(d => mojeSekcje.push(d.sekcja));
-      }
-
       // 1. Pobieramy koncerty, w których użytkownik faktycznie ma status ZAKWALIFIKOWANY (true)
       const { data: dekKoncerty } = await supabase
         .from('deklaracje_koncerty')
@@ -71,12 +59,11 @@ export default function Osiagniecia({ profile }) {
           }
         });
 
-        // --- FREKWENCJA MIESIĘCZNA (tylko ze swoich sekcji) ---
+        // --- FREKWENCJA MIESIĘCZNA (TYLKO z prób GŁÓWNEJ sekcji) ---
         const miesiaceMap = {};
         obecnosciData.forEach(item => {
           const info = probaInfoMap[item.id_proby];
-          // IGNORUJEMY PRÓBY GOŚCINNE ORAZ GENERALNE
-          if (info && info.data_czas && info.sekcja !== 'generalna' && mojeSekcje.includes(info.sekcja)) {
+          if (info && info.data_czas && info.sekcja === profile.sekcja) {
             const miesiacKey = info.data_czas.substring(0, 7);
             if (!miesiaceMap[miesiacKey]) {
               miesiaceMap[miesiacKey] = { obecne: 0, łącznie: 0 };
@@ -96,7 +83,7 @@ export default function Osiagniecia({ profile }) {
           }
         }
 
-        // --- STREAK PRÓB (Z pominięciem prób gościnnych i generalnych) ---
+        // --- STREAK PRÓB (TYLKO z prób GŁÓWNEJ sekcji, ignorujemy gościnne i generalne) ---
         const wpisyZUstalonaData = obecnosciData
           .map(d => {
             const info = probaInfoMap[d.id_proby];
@@ -106,7 +93,7 @@ export default function Osiagniecia({ profile }) {
               sekcja: info ? info.sekcja : null
             };
           })
-          .filter(item => item.data_proba && item.sekcja !== 'generalna' && mojeSekcje.includes(item.sekcja) && (item.obecny === true || item.obecny === false));
+          .filter(item => item.data_proba && item.sekcja === profile.sekcja && (item.obecny === true || item.obecny === false));
 
         wpisyZUstalonaData.sort((a, b) => new Date(b.data_proba) - new Date(a.data_proba));
 
@@ -157,7 +144,7 @@ export default function Osiagniecia({ profile }) {
 
     odznaki.push({
       tytuł: 'Perfekcjonista miesiąca',
-      opis: 'Utrzymuj 100% frekwencji na próbach przez cały miesiąc (min. 3 próby).',
+      opis: 'Utrzymuj 100% frekwencji na oficjalnych próbach przez cały miesiąc (min. 3 próby).',
       ikona: '🌟',
       zdobyte: staty.miesieczna100Frekwencja,
       postęp: staty.miesieczna100Frekwencja ? '1/1' : '0/1',
@@ -169,7 +156,7 @@ export default function Osiagniecia({ profile }) {
       const aktualny = Math.min(staty.koncertyUdział, prog);
       odznaki.push({
         tytuł: `Człowiek Sceny: ${prog} ${prog === 1 ? 'Koncert' : prog < 5 ? 'Koncerty' : 'Koncertów'}`,
-        opis: `Weź udział w ${prog} ${prog === 1 ? 'koncercie' : 'koncertach'} zespołu (wymagana kwalifikacja w składzie).`,
+        opis: `Weź udział w ${prog} ${prog === 1 ? 'koncercie' : 'koncertach'} zespołu (wymagana oficjalna kwalifikacja w składzie).`,
         ikona: '🎫',
         zdobyte: staty.koncertyUdział >= prog,
         postęp: `${aktualny}/${prog}`,
@@ -206,7 +193,7 @@ export default function Osiagniecia({ profile }) {
         <div>
           <h2 style={{ color: '#1e293b', margin: '0 0 5px 0', fontSize: '20px' }}>Twoje Osiągnięcia i Medale 🏆</h2>
           <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>
-            Zbieraj odznaki za aktywność, frekwencję, koncerty oraz passę prób! Aktualny streak: <strong style={{ color: '#8b5cf6' }}>🔥 {staty.streak} prób</strong>
+            Zbieraj odznaki za oficjalne próby sekcji <strong style={{ textTransform: 'uppercase', color: '#8b5cf6' }}>{profile.sekcja}</strong> oraz koncerty w składzie! Aktualny streak: <strong style={{ color: '#8b5cf6' }}>🔥 {staty.streak} prób</strong>
           </p>
         </div>
         <div style={{ padding: '8px 16px', backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '20px', color: '#15803d', fontWeight: 'bold', fontSize: '14px' }}>

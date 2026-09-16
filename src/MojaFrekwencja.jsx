@@ -8,7 +8,6 @@ const formatujWyswietlanie = (isoStr) => {
   return d.toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ', ' + d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
 };
 
-// Polskie nazwy miesięcy do grupowania
 const nazwyMiesiecy = [
   'Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec', 
   'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień'
@@ -42,7 +41,7 @@ export default function MojaFrekwencja({ profile }) {
   }, [profile]);
 
   const pobierzMojaFrekwencje = async () => {
-    let sekcjeDoPobrania = [profile.sekcja];
+    let sekcjeDoWyswietlenia = [profile.sekcja];
     const { data: dodatkowe } = await supabase
       .from('dodatkowe_sekcje')
       .select('sekcja')
@@ -51,22 +50,20 @@ export default function MojaFrekwencja({ profile }) {
       
     if (dodatkowe) {
       dodatkowe.forEach(d => {
-        if (!sekcjeDoPobrania.includes(d.sekcja)) sekcjeDoPobrania.push(d.sekcja);
+        if (!sekcjeDoWyswietlenia.includes(d.sekcja)) sekcjeDoWyswietlenia.push(d.sekcja);
       });
     }
 
-    if (!sekcjeDoPobrania.includes('generalna')) {
-      sekcjeDoPobrania.push('generalna');
+    if (!sekcjeDoWyswietlenia.includes('generalna')) {
+      sekcjeDoWyswietlenia.push('generalna');
     }
 
-    // Pobieramy próby rosnąco (chronologicznie: od najstarszych do najnowszych)
     const { data: probyData } = await supabase
       .from('proby')
       .select('*')
-      .in('sekcja', sekcjeDoPobrania)
+      .in('sekcja', sekcjeDoWyswietlenia)
       .order('data_czas', { ascending: true });
 
-    // POPRAWKA: Usunięto błędne odwołanie do nieistniejącej tabeli 'harmonogram_prob'
     const { data: dekData } = await supabase
       .from('deklaracje_obecnosci')
       .select('id_proby, planuje, usprawiedliwienie, obecny')
@@ -91,7 +88,8 @@ export default function MojaFrekwencja({ profile }) {
     if (dekData) {
       dekData.forEach(d => {
         const proba = probyMap[d.id_proby];
-        if (proba && proba.sekcja !== 'generalna') {
+        // STATYSTYKI LICZONE SĄ WYŁĄCZNIE Z GŁÓWNEJ SEKCJI CZŁONKA!
+        if (proba && proba.sekcja === profile.sekcja) {
           if (d.obecny === true) {
             ob++;
             tot++;
@@ -112,7 +110,6 @@ export default function MojaFrekwencja({ profile }) {
     ? Math.round((statystyki.obecny / statystyki.total) * 100) 
     : 0;
 
-  // Grupowanie prób według miesięcy (klucz: "YYYY-MM")
   const aktualnaData = new Date();
   const aktualnyKluczMiesiaca = `${aktualnaData.getFullYear()}-${String(aktualnaData.getMonth()).padStart(2, '0')}`;
 
@@ -139,7 +136,10 @@ export default function MojaFrekwencja({ profile }) {
 
   return (
     <div style={{ marginTop: '20px', padding: '25px', border: '1px solid #e2e8f0', borderRadius: '12px', backgroundColor: '#ffffff', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
-      <h2 style={{ color: '#1e293b', marginBottom: '15px', fontSize: '20px' }}>Moja Frekwencja i Rozliczenia 📊</h2>
+      <h2 style={{ color: '#1e293b', marginBottom: '5px', fontSize: '20px' }}>Moja Frekwencja i Rozliczenia 📊</h2>
+      <p style={{ margin: '0 0 20px 0', fontSize: '13px', color: '#64748b' }}>
+        Oficjalna sekcja: <strong style={{ textTransform: 'uppercase', color: '#8b5cf6' }}>{profile.sekcja}</strong> (tylko próby tej sekcji wliczają się do Twojej frekwencji i streaka).
+      </p>
       
       {/* GŁÓWNE KAFELKI ZE STATYSTYKAMI */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '15px', marginBottom: '30px' }}>
@@ -186,6 +186,7 @@ export default function MojaFrekwencja({ profile }) {
                       const mojeDane = mojeObecnosci[proba.id] || {};
                       const { planuje, usprawiedliwienie, obecny } = mojeDane;
                       const czyMinela = new Date(proba.data_czas) < new Date();
+                      const czyGoscinna = proba.sekcja !== profile.sekcja && proba.sekcja !== 'generalna';
 
                       return (
                         <div key={proba.id} style={{ 
@@ -194,9 +195,16 @@ export default function MojaFrekwencja({ profile }) {
                           borderRadius: '8px', borderTop: `1px solid ${stylSekcji.border}`, borderRight: `1px solid ${stylSekcji.border}`, borderBottom: `1px solid ${stylSekcji.border}`
                         }}>
                           <div style={{ flex: '1 1 300px' }}>
-                            <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: 'bold', backgroundColor: stylSekcji.glowny, color: 'white', marginBottom: '6px', textTransform: 'uppercase' }}>
-                              {proba.sekcja === 'generalna' ? '🎭 Próba generalna' : proba.sekcja}
-                            </span>
+                            <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '6px' }}>
+                              <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: 'bold', backgroundColor: stylSekcji.glowny, color: 'white', textTransform: 'uppercase' }}>
+                                {proba.sekcja === 'generalna' ? '🎭 Próba generalna' : proba.sekcja}
+                              </span>
+                              {czyGoscinna && (
+                                <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '10px', fontWeight: 'bold', backgroundColor: '#e2e8f0', color: '#475569' }}>
+                                  👁️ Udział gościnny (bez wpływu na statystyki)
+                                </span>
+                              )}
+                            </div>
                             <h4 style={{ margin: '0 0 4px 0', color: '#1e293b', fontSize: '15px' }}>
                               📅 {formatujWyswietlanie(proba.data_czas)}
                             </h4>
