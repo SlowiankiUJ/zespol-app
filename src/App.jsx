@@ -8,6 +8,7 @@ import PodgladCzlonka from './PodgladCzlonka';
 import PodgladObecnosciCzlonka from './PodgladObecnosciCzlonka';
 import Koncerty from './Koncerty';
 import Kwiatki from './Kwiatki';
+import Wino from './Wino';
 import ZarzadzanieCzlonkami from './ZarzadzanieCzlonkami';
 import OneSignal from 'react-onesignal';
 import Aktualnosci from './Aktualnosci';
@@ -270,6 +271,7 @@ export default function App() {
             <button onClick={() => setAktywnaZakladka('czlonkowie_lista')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'czlonkowie_lista' ? '#8b5cf6' : '#f8fafc', color: aktywnaZakladka === 'czlonkowie_lista' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>👥 Członkowie</button>
             <button onClick={() => setAktywnaZakladka('koncerty')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'koncerty' ? '#8b5cf6' : '#f8fafc', color: aktywnaZakladka === 'koncerty' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>🎻 Koncerty</button>
             <button onClick={() => setAktywnaZakladka('kwiatki')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'kwiatki' ? '#db2777' : '#f8fafc', color: aktywnaZakladka === 'kwiatki' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>🌸 Kwiatki</button>
+            <button onClick={() => setAktywnaZakladka('wino')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'wino' ? '#991b1b' : '#f8fafc', color: aktywnaZakladka === 'wino' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>🍷 Wino</button>
             <button onClick={() => setAktywnaZakladka('moje_statystyki')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'moje_statystyki' ? '#8b5cf6' : '#f8fafc', color: aktywnaZakladka === 'moje_statystyki' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>📊 Moja frekwencja</button>
             <button onClick={() => setAktywnaZakladka('profil')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'profil' ? '#8b5cf6' : '#f8fafc', color: aktywnaZakladka === 'profil' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>⚙️ Mój profil</button>
             <button onClick={() => setAktywnaZakladka('osiagniecia')} style={{ padding: '8px 16px', backgroundColor: aktywnaZakladka === 'osiagniecia' ? '#8b5cf6' : '#f8fafc', color: aktywnaZakladka === 'osiagniecia' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>🏆 Osiągnięcia</button>
@@ -308,6 +310,7 @@ export default function App() {
         {aktywnaZakladka === 'sprawdz_obecnosc' && profile?.rola === 'członek' && <PodgladObecnosciCzlonka profile={profile} />}
         {aktywnaZakladka === 'koncerty' && <Koncerty profile={profile} />}
         {aktywnaZakladka === 'kwiatki' && <Kwiatki profile={profile} />}
+        {aktywnaZakladka === 'wino' && profile?.rola === 'członek' && <Wino profile={profile} />}
         {aktywnaZakladka === 'moje_statystyki' && profile?.rola === 'członek' && <MojaFrekwencja profile={profile} />}
         {aktywnaZakladka === 'profil' && profile?.rola === 'członek' && <PodgladCzlonka profile={profile} />}
         {aktywnaZakladka === 'admin' && profile?.rola === 'kierownik' && <AdminPanel profile={profile} />}
