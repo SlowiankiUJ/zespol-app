@@ -3,147 +3,247 @@ import { supabase } from './supabaseClient';
 
 const RenderAvatar = ({ url }) => (
   <div style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: '#e2e8f0', overflow: 'hidden', display: 'flex', justifyContent: 'center', alignItems: 'center', flexShrink: 0 }}>
-    {url ? <img src={url} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: '14px' }}>👤</span>}
+    {url ? <img src={url} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: '13px' }}>👤</span>}
   </div>
 );
 
 export default function ListaObecnosci({ probaId, sekcja }) {
-  const [glowneProfile, setGlowneProfile] = useState([]);
-  const [goscinneProfile, setGoscinneProfile] = useState([]);
-  const [daneObecnosci, setDaneObecnosci] = useState({});
+  const [czlonkowie, setCzlonkowie] = useState([]);
+  const [deklaracje, setDeklaracje] = useState({});
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    pobierzOsobyIDeklaracje();
+    if (probaId) {
+      pobierzListeIWeryfikacje();
+    }
   }, [probaId, sekcja]);
 
-  const pobierzOsobyIDeklaracje = async () => {
-    let profQuery = supabase.from('profiles').select('id, imie_nazwisko, sekcja, glos, avatar_url').eq('status', 'zatwierdzony').eq('rola', 'członek');
+  const pobierzListeIWeryfikacje = async () => {
+    try {
+      // 1. Członkowie główni danej sekcji
+      let query = supabase
+        .from('profiles')
+        .select('id, imie_nazwisko, sekcja, glos, avatar_url')
+        .eq('status', 'zatwierdzony')
+        .eq('rola', 'członek');
 
-    // Jeśli to próba generalna, pobieramy WSZYSTKICH członków zespołu. W przeciwnym razie tylko daną sekcję.
-    if (sekcja !== 'generalna') {
-      profQuery = profQuery.eq('sekcja', sekcja);
-    }
-
-    const { data: profData } = await profQuery.order('imie_nazwisko', { ascending: true });
-    if (profData) setGlowneProfile(profData);
-
-    if (sekcja !== 'generalna') {
-      const { data: dodatkoweData } = await supabase.from('dodatkowe_sekcje').select('id_uzytkownika').eq('sekcja', sekcja).eq('status', 'zatwierdzony');
-      if (dodatkoweData && dodatkoweData.length > 0) {
-        const ids = dodatkoweData.map(d => d.id_uzytkownika);
-        const { data: goscieData } = await supabase.from('profiles').select('id, imie_nazwisko, sekcja, glos, avatar_url').in('id', ids).eq('status', 'zatwierdzony').order('imie_nazwisko', { ascending: true });
-        if (goscieData) setGoscinneProfile(goscieData);
-      } else {
-        setGoscinneProfile([]);
+      if (sekcja && sekcja !== 'generalna') {
+        query = query.eq('sekcja', sekcja);
       }
-    } else {
-      setGoscinneProfile([]); // W próbie generalnej wszyscy są na liście głównej
-    }
 
-    const { data: dekData } = await supabase.from('deklaracje_obecnosci').select('id_uzytkownika, planuje, usprawiedliwienie, obecny').eq('id_proby', probaId);
-    const mapa = {};
-    if (dekData) {
-      dekData.forEach(d => { 
-        mapa[d.id_uzytkownika] = { planuje: d.planuje, usprawiedliwienie: d.usprawiedliwienie, obecny: d.obecny }; 
+      const { data: czlonkowieData } = await query.order('imie_nazwisko', { ascending: true });
+
+      // 2. Członkowie gościnni (jeśli próba nie jest generalna)
+      let goscieData = [];
+      if (sekcja && sekcja !== 'generalna') {
+        const { data: dodatkowe } = await supabase
+          .from('dodatkowe_sekcje')
+          .select('id_uzytkownika')
+          .eq('sekcja', sekcja)
+          .eq('status', 'zatwierdzony');
+
+        if (dodatkowe && dodatkowe.length > 0) {
+          const ids = dodatkowe.map(d => d.id_uzytkownika);
+          const { data: goscieProfiles } = await supabase
+            .from('profiles')
+            .select('id, imie_nazwisko, sekcja, glos, avatar_url')
+            .in('id', ids)
+            .eq('status', 'zatwierdzony')
+            .order('imie_nazwisko', { ascending: true });
+
+          if (goscieProfiles) goscieData = goscieProfiles;
+        }
+      }
+
+      // Oznaczamy gości flagą czyGosc
+      const calaLista = [
+        ...(czlonkowieData || []).map(c => ({ ...c, czyGosc: false })),
+        ...goscieData.map(g => ({ ...g, czyGosc: true }))
+      ];
+
+      // 3. Pobieramy deklaracje dla tej próby
+      const { data: dekData } = await supabase
+        .from('deklaracje_obecnosci')
+        .select('*')
+        .eq('id_proby', probaId);
+
+      const mapa = {};
+      (dekData || []).forEach(d => {
+        let status = d.status_deklaracji;
+        if (!status) {
+          if (d.planuje === true) status = 'obecny';
+          else if (d.planuje === false) status = 'nieobecny';
+        }
+
+        mapa[d.id_uzytkownika] = {
+          planuje: d.planuje,
+          status_deklaracji: status,
+          usprawiedliwienie: d.usprawiedliwienie,
+          obecny: d.obecny
+        };
       });
+
+      setCzlonkowie(calaLista);
+      setDeklaracje(mapa);
+    } catch (err) {
+      console.error('Błąd pobierania listy obecności:', err);
+    } finally {
+      setLoading(false);
     }
-    setDaneObecnosci(mapa);
   };
 
-  const oznaczObecnosc = async (userId, statusObecnosci) => {
-    const istniejace = daneObecnosci[userId] || {};
+  const ustawObecnoscKadra = async (userId, wartoscObecny) => {
+    const dotychczasowyWpis = deklaracje[userId] || {};
     
-    const { error } = await supabase.from('deklaracje_obecnosci').upsert([
-      { 
-        id_proby: probaId, 
-        id_uzytkownika: userId, 
-        planuje: istniejace.planuje !== undefined ? istniejace.planuje : null,
-        usprawiedliwienie: istniejace.usprawiedliwienie || null,
-        obecny: statusObecnosci
-      }
-    ], { onConflict: 'id_proby, id_uzytkownika' });
+    // Jeśli kliknięto ten sam przycisk, czyścimy oznaczenie (null)
+    const nowaWartosc = dotychczasowyWpis.obecny === wartoscObecny ? null : wartoscObecny;
+
+    const payload = {
+      id_proby: probaId,
+      id_uzytkownika: userId,
+      obecny: nowaWartosc,
+      planuje: dotychczasowyWpis.planuje,
+      status_deklaracji: dotychczasowyWpis.status_deklaracji,
+      usprawiedliwienie: dotychczasowyWpis.usprawiedliwienie
+    };
+
+    const { error } = await supabase
+      .from('deklaracje_obecnosci')
+      .upsert([payload], { onConflict: 'id_proby, id_uzytkownika' });
 
     if (!error) {
-      setDaneObecnosci(prev => ({
+      setDeklaracje(prev => ({
         ...prev,
-        [userId]: { ...istniejace, obecny: statusObecnosci }
+        [userId]: { ...prev[userId], obecny: nowaWartosc }
       }));
-    } else {
-      alert('Błąd odznaczania obecności: ' + error.message);
     }
   };
 
-  const renderujWpisOsoby = (osoba, isGosc = false) => {
-    const dane = daneObecnosci[osoba.id] || {};
-    const { planuje, usprawiedliwienie, obecny } = dane;
-
-    return (
-      <li key={osoba.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', backgroundColor: isGosc ? '#faf5ff' : '#f8fafc', borderRadius: '6px', border: isGosc ? '1px solid #f3e8ff' : '1px solid #e2e8f0', flexWrap: 'wrap', gap: '10px' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          <span style={{ fontWeight: '600', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px' }}>
-            <RenderAvatar url={osoba.avatar_url} />
-            {osoba.imie_nazwisko} 
-            {sekcja === 'generalna' && <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 'normal' }}>({osoba.sekcja})</span>}
-            {isGosc && <span style={{ fontSize: '11px', color: '#8b5cf6', fontWeight: 'bold' }}> (Gościnnie)</span>}
-          </span>
-
-          <div style={{ fontSize: '12px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            Deklaracja: 
-            {planuje === true ? (
-              <span style={{ color: '#10b981', fontWeight: 'bold' }}>Będzie 👍</span>
-            ) : planuje === false ? (
-              <span style={{ color: '#ef4444', fontWeight: 'bold' }}>Nie będzie 👎 {usprawiedliwienie && `(Powód: ${usprawiedliwienie})`}</span>
-            ) : (
-              <span>Brak ⚪</span>
-            )}
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', gap: '6px' }}>
-          <button 
-            onClick={() => oznaczObecnosc(osoba.id, true)}
-            style={{ 
-              padding: '6px 12px', borderRadius: '6px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer', border: '1px solid',
-              backgroundColor: obecny === true ? '#10b981' : '#f1f5f9',
-              color: obecny === true ? '#ffffff' : '#64748b',
-              borderColor: obecny === true ? '#10b981' : '#cbd5e1'
-            }}
-          >
-            Obecny ✅
-          </button>
-          
-          <button 
-            onClick={() => oznaczObecnosc(osoba.id, false)}
-            style={{ 
-              padding: '6px 12px', borderRadius: '6px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer', border: '1px solid',
-              backgroundColor: obecny === false ? '#ef4444' : '#f1f5f9',
-              color: obecny === false ? '#ffffff' : '#64748b',
-              borderColor: obecny === false ? '#ef4444' : '#cbd5e1'
-            }}
-          >
-            Nieobecny ❌
-          </button>
-        </div>
-      </li>
-    );
-  };
+  if (loading) {
+    return <div style={{ padding: '15px', color: '#64748b', fontSize: '13px' }}>Ładowanie listy do sprawdzenia... ⏳</div>;
+  }
 
   return (
-    <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
-      <h5 style={{ margin: '0 0 10px 0', fontSize: '15px', color: '#1e293b' }}>📝 Sprawdź faktyczną obecność:</h5>
+    <div style={{ marginTop: '15px', backgroundColor: '#ffffff', padding: '15px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
+      <h5 style={{ margin: '0 0 12px 0', fontSize: '14px', color: '#1e293b' }}>
+        Weryfikacja obecności przez kadrę ({czlonkowie.length} osób):
+      </h5>
 
-      <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 15px 0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        {glowneProfile.map(osoba => renderujWpisOsoby(osoba, false))}
-      </ul>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        {czlonkowie.map(c => {
+          const dek = deklaracje[c.id] || {};
+          const status = dek.status_deklaracji;
 
-      {goscinneProfile.length > 0 && (
-        <div style={{ marginTop: '12px', borderTop: '1px dashed #cbd5e1', paddingTop: '15px' }}>
-          <p style={{ fontSize: '12px', fontWeight: 'bold', color: '#8b5cf6', margin: '0 0 6px 0', textTransform: 'uppercase' }}>Członkowie gościnni:</p>
-          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {goscinneProfile.map(gosc => renderujWpisOsoby(gosc, true))}
-          </ul>
-        </div>
-      )}
+          return (
+            <div 
+              key={c.id} 
+              style={{ 
+                padding: '10px 14px', 
+                backgroundColor: c.czyGosc ? '#faf5ff' : '#f8fafc', 
+                borderRadius: '6px', 
+                border: '1px solid #e2e8f0', 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center', 
+                flexWrap: 'wrap', 
+                gap: '10px' 
+              }}
+            >
+              {/* Dane członka i deklaracja */}
+              <div style={{ flex: '1 1 240px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <RenderAvatar url={c.avatar_url} />
+                  <span style={{ fontWeight: 'bold', fontSize: '14px', color: '#1e293b' }}>
+                    {c.imie_nazwisko}
+                  </span>
+                  {c.czyGosc && (
+                    <span style={{ fontSize: '11px', color: '#8b5cf6', backgroundColor: '#ede9fe', padding: '2px 6px', borderRadius: '10px', fontWeight: 'bold' }}>
+                      Gość ({c.sekcja})
+                    </span>
+                  )}
+                  {c.glos && (
+                    <span style={{ fontSize: '11px', color: '#64748b' }}>
+                      ({c.glos})
+                    </span>
+                  )}
+                </div>
+
+                {/* Etykieta deklaracji ze spóźnieniem */}
+                <div style={{ marginTop: '4px', marginLeft: '36px' }}>
+                  {status === 'spozniony' ? (
+                    <div>
+                      <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 'bold', backgroundColor: '#fef3c7', color: '#b45309', border: '1px solid #fde68a' }}>
+                        ⏰ Spóźni się
+                      </span>
+                      {dek.usprawiedliwienie && (
+                        <span style={{ display: 'block', fontSize: '11px', color: '#92400e', fontStyle: 'italic', marginTop: '2px' }}>
+                          Powód: „{dek.usprawiedliwienie}”
+                        </span>
+                      )}
+                    </div>
+                  ) : status === 'obecny' || (status == null && dek.planuje === true) ? (
+                    <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 'bold', backgroundColor: '#dcfce7', color: '#15803d' }}>
+                      👍 Będzie
+                    </span>
+                  ) : status === 'nieobecny' || (status == null && dek.planuje === false) ? (
+                    <div>
+                      <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 'bold', backgroundColor: '#fee2e2', color: '#b91c1c' }}>
+                        👎 Nie będzie
+                      </span>
+                      {dek.usprawiedliwienie && (
+                        <span style={{ display: 'block', fontSize: '11px', color: '#991b1b', fontStyle: 'italic', marginTop: '2px' }}>
+                          Powód: „{dek.usprawiedliwienie}”
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <span style={{ fontSize: '11px', color: '#94a3b8', fontStyle: 'italic' }}>
+                      ⚪ Brak deklaracji
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Przyciski weryfikacji kadry */}
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button
+                  onClick={() => ustawObecnoscKadra(c.id, true)}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    border: '1px solid',
+                    borderColor: dek.obecny === true ? '#10b981' : '#cbd5e1',
+                    backgroundColor: dek.obecny === true ? '#10b981' : '#ffffff',
+                    color: dek.obecny === true ? '#ffffff' : '#334155',
+                    cursor: 'pointer',
+                    fontWeight: 'bold',
+                    fontSize: '12px'
+                  }}
+                >
+                  Obecny ✅
+                </button>
+
+                <button
+                  onClick={() => ustawObecnoscKadra(c.id, false)}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    border: '1px solid',
+                    borderColor: dek.obecny === false ? '#ef4444' : '#cbd5e1',
+                    backgroundColor: dek.obecny === false ? '#ef4444' : '#ffffff',
+                    color: dek.obecny === false ? '#ffffff' : '#334155',
+                    cursor: 'pointer',
+                    fontWeight: 'bold',
+                    fontSize: '12px'
+                  }}
+                >
+                  Nieobecny ❌
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
