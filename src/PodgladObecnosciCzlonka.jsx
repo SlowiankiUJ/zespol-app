@@ -33,11 +33,32 @@ export default function PodgladObecnosciCzlonka({ profile }) {
       dzis.setHours(0, 0, 0, 0);
       const isoPoczatekDzis = dzis.toISOString();
 
-      // 1. Próby tylko dla sekcji profilu ORAZ wyłącznie aktualne/nadchodzące (od dzisiaj w przód)
+      // Zbieramy sekcje do pobrania: sekcja główna użytkownika ORAZ próby generalne
+      const sekcjeDoPobrania = [glownaSekcja];
+      if (!sekcjeDoPobrania.includes('generalna')) {
+        sekcjeDoPobrania.push('generalna');
+      }
+
+      // Sprawdzamy też ewentualne dodatkowe sekcje gościnne członka
+      const { data: dodatkowe } = await supabase
+        .from('dodatkowe_sekcje')
+        .select('sekcja')
+        .eq('id_uzytkownika', profile.id)
+        .eq('status', 'zatwierdzony');
+
+      if (dodatkowe) {
+        dodatkowe.forEach(d => {
+          if (!sekcjeDoPobrania.includes(d.sekcja)) {
+            sekcjeDoPobrania.push(d.sekcja);
+          }
+        });
+      }
+
+      // 1. Próby dla sekcji profilu ORAZ próby generalne (od dzisiaj w przód)
       const { data: probyData, error: probyError } = await supabase
         .from('proby')
         .select('*')
-        .eq('sekcja', glownaSekcja)
+        .in('sekcja', sekcjeDoPobrania)
         .gte('data_czas', isoPoczatekDzis)
         .order('data_czas', { ascending: true });
 
@@ -172,7 +193,7 @@ export default function PodgladObecnosciCzlonka({ profile }) {
       </div>
 
       <p style={{ color: '#64748b', fontSize: '14px', marginBottom: '20px' }}>
-        Podgląd deklaracji obecności Twojej sekcji: <strong style={{ textTransform: 'uppercase', color: '#0f172a' }}>{profile.sekcja}</strong>
+        Podgląd deklaracji obecności Twojej sekcji oraz prób generalnych: <strong style={{ textTransform: 'uppercase', color: '#0f172a' }}>{profile.sekcja}</strong>
       </p>
 
       {loading ? (
@@ -200,6 +221,11 @@ export default function PodgladObecnosciCzlonka({ profile }) {
                 borderBottom: `1px solid ${stylSekcji.border}`, 
                 boxShadow: '0 2px 4px rgba(0,0,0,0.01)' 
               }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+                  <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold', backgroundColor: stylSekcji.glowny, color: 'white', textTransform: 'uppercase' }}>
+                    {proba.sekcja === 'generalna' ? '🎭 Próba generalna' : proba.sekcja}
+                  </span>
+                </div>
                 <h4 style={{ margin: '0 0 5px 0', color: '#1e293b', fontSize: '16px' }}>
                   📅 {new Date(proba.data_czas).toLocaleString('pl-PL')}
                 </h4>
