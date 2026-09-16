@@ -95,6 +95,7 @@ export default function Kwiatki({ profile }) {
     e.preventDefault();
     if (!dataWydarzenia) { alert('Wybierz datę wydarzenia.'); return; }
 
+    // Bezpieczne złożenie daty i godziny jako czysty ciąg znaków bez przesunięć strefy czasowej
     const pelnaDataCzas = `${dataWydarzenia}T${godzinaWydarzenia}:00`;
 
     const { error } = await supabase
@@ -125,7 +126,7 @@ export default function Kwiatki({ profile }) {
         .upsert([{ id_kwiatka: kwiatekId, id_uzytkownika: profile.id, zgloszony: true }], { onConflict: 'id_kwiatka, id_uzytkownika' });
       if (!error) pobierzWszystko();
     } else {
-      // Rezygnacja: usuwamy lub oznaczamy jako niezgłoszony
+      // Rezygnacja: usuwamy wpis
       const { error } = await supabase
         .from('kwiatki_uczestnicy')
         .delete()
@@ -146,7 +147,7 @@ export default function Kwiatki({ profile }) {
     if (!error) pobierzWszystko();
   };
 
-  // Kierownik / Inspektor ręcznie dodaje członka (np. który sam się nie zgłosił)
+  // Kierownik / Inspektor ręcznie dodaje członka
   const dodajCzlonkaRecznie = async (kwiatekId) => {
     const userId = wybranaOsobaRęcznie[kwiatekId];
     if (!userId) return;
