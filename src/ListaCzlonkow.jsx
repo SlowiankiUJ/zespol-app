@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 
-// Funkcja usuwająca polskie znaki, spacje i ujednolicająca wielkość liter (np. "Chór" -> "chor", "chór " -> "chor")
-const oczyscSekcje = (str) => {
+const oczyscTekst = (str) => {
   if (!str) return '';
   return str
     .toString()
@@ -49,81 +48,80 @@ export default function ListaCzlonkow({ profile }) {
     setLoading(true);
 
     try {
-      const sekcjaGlownaOsoby = oczyscSekcje(wybranaOsoba.sekcja);
+      const sekcjaOsoby = oczyscTekst(wybranaOsoba.sekcja);
 
-      // 1. Pobieramy próby i deklaracje
-      const { data: probyList } = await supabase
-        .from('proby')
-        .select('id, data_czas, sekcja')
-        .order('data_czas', { ascending: false });
-
-      const { data: obecnosciData } = await supabase
+      // 1. POBIERAMY DEKLARACJE WRAZ Z DANYMI PRÓBY BEZPOŚREDNIO Z RELACJI
+      const { data: obecnosciZProbami, error: obecnosciError } = await supabase
         .from('deklaracje_obecnosci')
-        .select('id_proby, obecny')
+        .select(`
+          obecny,
+          proby!inner (
+            id,
+            data_czas,
+            sekcja
+          )
+        `)
         .eq('id_uzytkownika', wybranaOsoba.id);
+
+      if (obecnosciError) throw obecnosciError;
 
       let ob = 0;
       let tot = 0;
       let aktualnyStreak = 0;
-      let liczbaKoncertow = 0;
-      let liczbaWystepow = 0;
 
-      if (probyList && obecnosciData) {
-        const dekMap = {};
-        obecnosciData.forEach(d => {
-          dekMap[String(d.id_proby)] = d.obecny;
+      if (obecnosciZProbami && obecnosciZProbami.length > 0) {
+        // FILTRUJEMY: Zostawiamy TYLKO próby, których sekcja zgadza się z sekcją członka
+        // Próby gościnne (gdzie proby.sekcja != sekcjaOsoby) oraz próby generalne zostają ODRZUCONE
+        const tylkoWlasneObecnosci = obecnosciZProbami.filter(item => {
+          if (!item.proby) return false;
+          const probaSekcja = oczyscTekst(item.proby.sekcja);
+          return probaSekcja === sekcjaOsoby && probaSekcja !== 'generalna';
         });
 
-        // BEZWZGLĘDNY FILTR: Wybieramy TYLKO próby, których oczyszczona sekcja zgadza się z sekcją główną
-        // Odrzucamy każdą inną sekcję (gościnne) oraz próbę generalną!
-        const wlasneProby = probyList.filter(p => {
-          const s = oczyscSekcje(p.sekcja);
-          return s === sekcjaGlownaOsoby && s !== 'generalna';
-        });
-
-        // STREAK - liczymy od najnowszej do najstarszej próby z WŁASNEJ sekcji
-        for (const p of wlasneProby) {
-          const stan = dekMap[String(p.id)];
-          if (stan === true) {
-            aktualnyStreak++;
-          } else if (stan === false) {
-            break; // Przerwanie streaka przy pierwszej nieobecności na własnej próbie
-          }
-        }
-
-        // FREKWENCJA - liczymy TYLKO z prób z WŁASNEJ sekcji
-        wlasneProby.forEach(p => {
-          const stan = dekMap[String(p.id)];
-          if (stan === true) {
+        // FREKWENCJA
+        tylkoWlasneObecnosci.forEach(item => {
+          if (item.obecny === true) {
             ob++;
             tot++;
-          } else if (stan === false) {
+          } else if (item.obecny === false) {
             tot++;
           }
         });
+
+        // STREAK (sortujemy malejąco po dacie próby)
+        const posortowaneDoStreaka = [...tylkoWlasneObecnosci]
+          .filter(item => item.obecny === true || item.obecny === false)
+          .sort((a, b) => new Date(b.proby.data_czas) - new Date(a.proby.data_czas));
+
+        for (const item of posortowaneDoStreaka) {
+          if (item.obecny === true) {
+            aktualnyStreak++;
+          } else if (item.obecny === false) {
+            break;
+          }
+        }
       }
 
       const procentFrekwencji = tot > 0 ? Math.round((ob / tot) * 100) : 0;
 
-      // 2. Koncerty - TYLKO z zatwierdzoną kwalifikacją (zakwalifikowany === true)
+      // 2. KONCERTY - TYLKO ze statusem zakwalifikowany === true
       const { data: dekKoncerty } = await supabase
         .from('deklaracje_koncerty')
         .select('id_koncertu, zakwalifikowany')
         .eq('id_uzytkownika', wybranaOsoba.id);
 
-      if (dekKoncerty) {
-        const zakwalifikowaneKoncerty = dekKoncerty.filter(d => d.zakwalifikowany === true);
-        liczbaKoncertow = zakwalifikowaneKoncerty.length;
-      }
+      const zakwalifikowaneKoncerty = dekKoncerty ? dekKoncerty.filter(d => d.zakwalifikowany === true) : [];
+      const liczbaKoncertow = zakwalifikowaneKoncerty.length;
 
-      // 3. Występy w obsadzie programów
+      // 3. WYSTĘPY W OBSADZIE PROGRAMU
       const { data: obsadaData } = await supabase
         .from('koncert_obsada')
         .select('id')
         .eq('id_uzytkownika', wybranaOsoba.id);
-      if (obsadaData) liczbaWystepow = obsadaData.length;
 
-      // Generowanie odznak
+      const liczbaWystepow = obsadaData ? obsadaData.length : 0;
+
+      // GENEROWANIE ODZNAK
       const odznaki = [
         { tytuł: 'Rozgrzewka w tańcu (5 prób)', zdobyte: aktualnyStreak >= 5, ikona: '👟' },
         { tytuł: 'Żelazna kondycja (15 prób)', zdobyte: aktualnyStreak >= 15, ikona: '🪵' },
@@ -159,7 +157,7 @@ export default function ListaCzlonkow({ profile }) {
     <div style={{ marginTop: '20px', padding: '25px', border: '1px solid #e2e8f0', borderRadius: '12px', backgroundColor: '#ffffff', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
       <h2 style={{ color: '#1e293b', marginBottom: '8px', fontSize: '20px' }}>Członkowie Zespołu 👥</h2>
       <p style={{ color: '#64748b', fontSize: '14px', marginBottom: '25px' }}>
-        Przeglądaj profile znajomych z zespołu, sprawdź ich sekcje, frekwencję oraz zdobyte osiągnięcia!
+        Przeglądaj profile znajomych z zespołu, sprawdź ich sekcje, oficjalną frekwencję oraz zdobyte osiągnięcia!
       </p>
 
       {/* SZCZEGÓŁY WYBRANEGO CZŁONKA */}
