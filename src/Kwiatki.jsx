@@ -1,10 +1,16 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 
+// Bezpieczne formatowanie daty i godziny bez przeliczania stref czasowych
 const formatujDate = (dataString) => {
   if (!dataString) return '';
-  const d = new Date(dataString);
-  return d.toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ', ' + d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
+  const [dataCzesc, czasCzesc] = dataString.split('T');
+  if (!dataCzesc || !czasCzesc) return dataString;
+  
+  const [rok, mc, dzien] = dataCzesc.split('-');
+  const [godzina, minuta] = czasCzesc.split(':');
+  
+  return `${dzien}.${mc}.${rok}, ${godzina}:${minuta}`;
 };
 
 const RenderAvatar = ({ url }) => (
@@ -95,8 +101,8 @@ export default function Kwiatki({ profile }) {
     e.preventDefault();
     if (!dataWydarzenia) { alert('Wybierz datę wydarzenia.'); return; }
 
-    // Bezpieczne złożenie daty i godziny jako czysty ciąg znaków bez przesunięć strefy czasowej
-    const pelnaDataCzas = `${dataWydarzenia}T${godzinaWydarzenia}:00`;
+    // Zapis w formacie dosłownym z sufiksem Z eliminującym przesuwanie strefy czasowej
+    const pelnaDataCzas = `${dataWydarzenia}T${godzinaWydarzenia}:00Z`;
 
     const { error } = await supabase
       .from('kwiatki')
@@ -126,7 +132,6 @@ export default function Kwiatki({ profile }) {
         .upsert([{ id_kwiatka: kwiatekId, id_uzytkownika: profile.id, zgloszony: true }], { onConflict: 'id_kwiatka, id_uzytkownika' });
       if (!error) pobierzWszystko();
     } else {
-      // Rezygnacja: usuwamy wpis
       const { error } = await supabase
         .from('kwiatki_uczestnicy')
         .delete()
