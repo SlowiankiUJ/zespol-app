@@ -194,27 +194,6 @@ export default function Koncerty({ profile }) {
     if (!error) pobierzKoncerty();
   };
 
-  // ZOPTYMALIZOWANA, SZYBKA FUNKCJA DO KLIKANIA W MACIERZY EXCELA
-  const przelaczObsadeWMacierzy = async (programId, userId, czyBylOznaczony) => {
-    // 1. Natychmiastowa aktualizacja lokalnego interfejsu (żeby checkboxy działały błyskawicznie bez ładowania)
-    setObsadyProgramow(prev => {
-      const aktualniCzlonkowie = prev[programId] || [];
-      if (czyBylOznaczony) {
-        return { ...prev, [programId]: aktualniCzlonkowie.filter(id => id !== userId) };
-      } else {
-        return { ...prev, [programId]: [...aktualniCzlonkowie, userId] };
-      }
-    });
-
-    // 2. Wysłanie zapytania cicho w tle do bazy
-    if (czyBylOznaczony) {
-      await supabase.from('koncert_obsada').delete().eq('id_programu', programId).eq('id_uzytkownika', userId);
-    } else {
-      await supabase.from('koncert_obsada').insert([{ id_programu: programId, id_uzytkownika: userId }]);
-    }
-  };
-
-  // Tradycyjne przypisanie z Select'a
   const przypiszDoObsady = async (programId, userId) => {
     const { error } = await supabase.from('koncert_obsada').insert([{ id_programu: programId, id_uzytkownika: userId }]);
     if (!error) pobierzKoncerty();
@@ -224,20 +203,42 @@ export default function Koncerty({ profile }) {
     if (!error) pobierzKoncerty();
   };
 
+  // ZOPTYMALIZOWANA, SZYBKA FUNKCJA DO KLIKANIA W MACIERZY EXCELA
+  const przelaczObsadeWMacierzy = async (programId, userId, czyBylOznaczony) => {
+    setObsadyProgramow(prev => {
+      const aktualniCzlonkowie = prev[programId] || [];
+      if (czyBylOznaczony) {
+        return { ...prev, [programId]: aktualniCzlonkowie.filter(id => id !== userId) };
+      } else {
+        return { ...prev, [programId]: [...aktualniCzlonkowie, userId] };
+      }
+    });
+
+    if (czyBylOznaczony) {
+      await supabase.from('koncert_obsada').delete().eq('id_programu', programId).eq('id_uzytkownika', userId);
+    } else {
+      await supabase.from('koncert_obsada').insert([{ id_programu: programId, id_uzytkownika: userId }]);
+    }
+  };
+
   const przelaczRozwiniecieSkladu = (koncertId) => { setRozwinieteSklady(prev => ({ ...prev, [koncertId]: !prev[koncertId] })); };
   const ustawPodzakladke = (koncertId, tab) => { setAktywnaPodzakladka(prev => ({ ...prev, [koncertId]: tab })); };
 
   // ----------------------------------------------------
-  // GENERATOR PLIKÓW EXCEL (.XLSX)
+  // GENERATOR PLIKÓW EXCEL (.XLSX) ODWZOROWANY Z PROJEKTU
   // ----------------------------------------------------
   const eksportujDoExcela = (koncert, wszyscyZgloszeni, programyTegoKoncertu) => {
-    // Odfiltruj tylko osoby zdeklarowane na TAK
     const chetni = wszyscyZgloszeni.filter(z => z.planuje === true);
-    const zakwalifikowani = chetni.filter(z => z.zakwalifikowany === true);
+    const zakwalifikowani = sortujOsoby(chetni.filter(z => z.zakwalifikowany === true));
     
-    // Sortowanie list
-    const listaZgloszeniSort = sortujOsoby(chetni);
-    const listaZakwalifikowaniSort = sortujOsoby(zakwalifikowani);
+    // Grupowanie układów według sekcji[cite: 1]
+    const baletPrograms = programyTegoKoncertu.filter(p => ['baletowy', 'ogólny'].includes(p.typ_ukladu));
+    const chorPrograms = programyTegoKoncertu.filter(p => ['chóralny', 'ogólny'].includes(p.typ_ukladu));
+    const kapelaPrograms = programyTegoKoncertu.filter(p => ['kapeli', 'ogólny'].includes(p.typ_ukladu));
+
+    const baletKwalifikowani = zakwalifikowani.filter(z => z.sekcja === 'balet');
+    const chorKwalifikowani = zakwalifikowani.filter(z => z.sekcja === 'chór');
+    const kapelaKwalifikowani = zakwalifikowani.filter(z => z.sekcja === 'kapela');
 
     // ================== ARKUSZ 1: ZGŁOSZENI ==================
     const daneArkusz1 = [
@@ -246,7 +247,7 @@ export default function Koncerty({ profile }) {
       ['Sekcja', 'Głos / Grupa', 'Imię i nazwisko', 'Status kwalifikacji']
     ];
 
-    listaZgloszeniSort.forEach(osoba => {
+    sortujOsoby(chetni).forEach(osoba => {
       daneArkusz1.push([
         osoba.sekcja,
         osoba.glos || '-',
@@ -256,44 +257,127 @@ export default function Koncerty({ profile }) {
     });
 
     // ================== ARKUSZ 2: MACIERZ ZAKWALIFIKOWANYCH ==================
-    const naglowkiMacierzyW1 = ['Członkowie', '', ''];
-    const naglowkiMacierzyW2 = ['Sekcja', 'Grupa / Głos', 'Imię i nazwisko'];
+    const daneArkusz2 = [];
 
-    programyTegoKoncertu.forEach(prog => {
-      naglowkiMacierzyW1.push(prog.tytul_ukladu);
-      naglowkiMacierzyW2.push(`Typ: ${prog.typ_ukladu}`);
-    });
+    // Metoda pomocnicza do ułożenia bloków w Arkuszu jak na zdjęciu[cite: 1]
+    const generujSekcjeDoExcela = (nazwaSekcji, grupy, osoby, programy) => {
+      if (osoby.length === 0) return;
 
-    const daneArkusz2 = [naglowkiMacierzyW1, naglowkiMacierzyW2];
+      // Nagłówek dla bloku sekcji
+      daneArkusz2.push(['Sekcja', 'Grupa/Głos', 'Imię i nazwisko', ...programy.map(p => p.tytul_ukladu)]);
 
-    listaZakwalifikowaniSort.forEach(osoba => {
-      const wierszOsoby = [osoba.sekcja, osoba.glos || '-', osoba.imie_nazwisko];
-      
-      // Sprawdzanie do których układów należy osoba
-      programyTegoKoncertu.forEach(prog => {
-        const obsadaUkladu = obsadyProgramow[prog.id] || [];
-        const czyWystepuje = obsadaUkladu.includes(osoba.id_uzytkownika);
-        wierszOsoby.push(czyWystepuje ? 1 : ''); // 1 jeśli występuje, pusty jeśli nie
+      let isFirstGrupaInSekcja = true;
+
+      grupy.forEach(grupa => {
+        const osobyWGrupie = osoby.filter(o => (o.glos || '') === grupa);
+        if (osobyWGrupie.length === 0 && grupa !== '') return;
+
+        // Etykieta określająca Grupę (Pani/Pan/Sopran...) pod odpowiednią kolumną
+        daneArkusz2.push([isFirstGrupaInSekcja ? nazwaSekcji : '', grupa, '', ...programy.map(() => '')]);
+        isFirstGrupaInSekcja = false;
+
+        osobyWGrupie.forEach(o => {
+          const wierszOsoby = ['', '', o.imie_nazwisko];
+          
+          programy.forEach(prog => {
+            const czyWystepuje = (obsadyProgramow[prog.id] || []).includes(o.id_uzytkownika);
+            wierszOsoby.push(czyWystepuje ? 1 : '');
+          });
+
+          daneArkusz2.push(wierszOsoby);
+        });
       });
+      daneArkusz2.push([]); // Pusty odstęp pomiędzy sekcjami
+    };
 
-      daneArkusz2.push(wierszOsoby);
-    });
+    generujSekcjeDoExcela('Balet', ['Pani', 'Pan', ''], baletKwalifikowani, baletPrograms);
+    generujSekcjeDoExcela('Chór', ['Sopran', 'Alt', 'Tenor', 'Bas', ''], chorKwalifikowani, chorPrograms);
+    generujSekcjeDoExcela('Kapela', [''], kapelaKwalifikowani, kapelaPrograms);
 
     // TWORZENIE PLIKU
     const wb = XLSX.utils.book_new();
     const ws1 = XLSX.utils.aoa_to_sheet(daneArkusz1);
     const ws2 = XLSX.utils.aoa_to_sheet(daneArkusz2);
 
-    // Formaty kolumn dla lepszego wyglądu (np. szersze kolumny na nazwiska)
     ws1['!cols'] = [{wch: 12}, {wch: 15}, {wch: 25}, {wch: 20}];
-    ws2['!cols'] = [{wch: 12}, {wch: 15}, {wch: 25}]; // pierwsze 3
-    programyTegoKoncertu.forEach(() => ws2['!cols'].push({wch: 18})); // kolumny z układami
+    
+    // Obliczamy max liczbę programów, aby nadać szerokości kolumnom w arkuszu 2
+    const maxProg = Math.max(baletPrograms.length, chorPrograms.length, kapelaPrograms.length);
+    const colsA2 = [{wch: 12}, {wch: 15}, {wch: 25}];
+    for(let i=0; i<maxProg; i++) colsA2.push({wch: 15});
+    ws2['!cols'] = colsA2;
 
     XLSX.utils.book_append_sheet(wb, ws1, 'Zgłoszeni na koncert');
     XLSX.utils.book_append_sheet(wb, ws2, 'Macierz Obsady');
 
     const czystyTytul = koncert.tytul.replace(/[^a-zA-Z0-9]/g, '_');
     XLSX.writeFile(wb, `Koncert_${czystyTytul}.xlsx`);
+  };
+
+  // ----------------------------------------------------
+  // POMOCNICZY RENDERER DLA MACIERZY UI
+  // ----------------------------------------------------
+  const renderMacierzUI = (nazwaSekcji, ikonaSekcji, grupy, osoby, programy) => {
+    if (osoby.length === 0) return null;
+
+    return (
+      <div style={{ marginBottom: '30px', overflowX: 'auto', border: '1px solid #cbd5e1', borderRadius: '8px' }}>
+        <h5 style={{ margin: 0, padding: '12px 15px', backgroundColor: '#f8fafc', color: '#1e293b', borderBottom: '1px solid #cbd5e1' }}>
+          {ikonaSekcji} Macierz: {nazwaSekcji}
+        </h5>
+        <table style={{ minWidth: '100%', borderCollapse: 'collapse', fontSize: '13px', backgroundColor: '#fff' }}>
+          <thead style={{ backgroundColor: '#f1f5f9' }}>
+            <tr>
+              <th style={{ padding: '10px', borderRight: '1px solid #cbd5e1', borderBottom: '2px solid #94a3b8', textAlign: 'left', width: '80px' }}>Sekcja</th>
+              <th style={{ padding: '10px', borderRight: '1px solid #cbd5e1', borderBottom: '2px solid #94a3b8', textAlign: 'left', width: '100px' }}>Grupa/Głos</th>
+              <th style={{ padding: '10px', borderRight: '2px solid #94a3b8', borderBottom: '2px solid #94a3b8', textAlign: 'left', width: '200px' }}>Imię i nazwisko</th>
+              {programy.map((prog) => (
+                <th key={prog.id} style={{ padding: '10px', borderRight: '1px solid #cbd5e1', borderBottom: '2px solid #94a3b8', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                  {prog.tytul_ukladu}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          {/* Używamy oddzielnych tagów <tbody>, aby idealnie odwzorować strukturę z Excela */}
+          {grupy.map((grupa, idxGrupy) => {
+            const osobyWGrupie = osoby.filter(o => (o.glos || '') === grupa);
+            if (osobyWGrupie.length === 0 && grupa !== '') return null;
+
+            return (
+              <tbody key={grupa || 'brak'}>
+                <tr style={{ backgroundColor: '#f8fafc', fontWeight: 'bold' }}>
+                  <td style={{ padding: '8px 10px', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', color: '#0f172a' }}>{idxGrupy === 0 ? nazwaSekcji : ''}</td>
+                  <td style={{ padding: '8px 10px', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', color: '#0f172a' }}>{grupa}</td>
+                  <td style={{ padding: '8px 10px', borderRight: '2px solid #94a3b8', borderBottom: '1px solid #e2e8f0' }}></td>
+                  {programy.map(p => <td key={`empty-${p.id}`} style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}></td>)}
+                </tr>
+                {osobyWGrupie.map(osoba => (
+                  <tr key={osoba.id_uzytkownika}>
+                    <td style={{ padding: '8px 10px', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}></td>
+                    <td style={{ padding: '8px 10px', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}></td>
+                    <td style={{ padding: '8px 10px', borderRight: '2px solid #94a3b8', borderBottom: '1px solid #e2e8f0', color: '#1e293b' }}>{osoba.imie_nazwisko}</td>
+                    {programy.map(prog => {
+                      const czyAktualnieW = (obsadyProgramow[prog.id] || []).includes(osoba.id_uzytkownika);
+                      return (
+                        <td 
+                          key={prog.id} 
+                          style={{ padding: '0', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', textAlign: 'center', backgroundColor: czyAktualnieW ? '#d1fae5' : '#ffffff', cursor: canManageProgram ? 'pointer' : 'default', transition: 'background-color 0.1s' }}
+                          onClick={() => { if(canManageProgram) przelaczObsadeWMacierzy(prog.id, osoba.id_uzytkownika, czyAktualnieW) }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', minHeight: '35px' }}>
+                            {czyAktualnieW ? <span style={{ color: '#10b981', fontWeight: '900', fontSize: '16px' }}>1</span> : <span style={{ color: '#cbd5e1', fontSize: '12px' }}>-</span>}
+                          </div>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            );
+          })}
+        </table>
+      </div>
+    );
   };
 
   const inputStyle = { width: '100%', boxSizing: 'border-box', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px', backgroundColor: '#fff', color: '#000' };
@@ -316,6 +400,7 @@ export default function Koncerty({ profile }) {
               <label style={labelStyle}>Tytuł:</label>
               <input type="text" placeholder="Tytuł (np. Koncert Jubileuszowy)" value={tytul} onChange={(e) => setTytul(e.target.value)} required style={inputStyle} />
             </div>
+            
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
               <div style={{ flex: '1 1 150px' }}>
                 <label style={labelStyle}>Data (kliknij po kalendarz):</label>
@@ -326,6 +411,7 @@ export default function Koncerty({ profile }) {
                 <input type="time" value={godzinaKoncertu} onChange={(e) => setGodzinaKoncertu(e.target.value)} onClick={(e) => e.target.showPicker && e.target.showPicker()} required style={{...inputStyle, cursor: 'pointer'}} />
               </div>
             </div>
+
             <div>
               <label style={labelStyle}>Miejsce:</label>
               <input type="text" placeholder="Miejsce wydarzenia" value={miejsce} onChange={(e) => setMiejsce(e.target.value)} required style={inputStyle} />
@@ -334,6 +420,7 @@ export default function Koncerty({ profile }) {
               <label style={labelStyle}>Opis:</label>
               <textarea placeholder="Ogólny opis" value={programOpis} onChange={(e) => setProgramOpis(e.target.value)} rows="2" style={{...inputStyle, resize: 'vertical'}} />
             </div>
+            
             <button type="submit" style={{ padding: '12px', backgroundColor: '#3182ce', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}>
               Dodaj koncert 🎫
             </button>
@@ -369,9 +456,15 @@ export default function Koncerty({ profile }) {
             const chor = chetni.filter(z => z.sekcja === 'chór');
             const kapela = chetni.filter(z => z.sekcja === 'kapela');
             
-            // Do macierzy bierzemy zakwalifikowanych
             const zakwalifikowaniWszyscy = chetni.filter(z => z.zakwalifikowany === true);
-            const zakwalifikowaniPosortowani = sortujOsoby(zakwalifikowaniWszyscy);
+            const baletKwalifikowani = zakwalifikowaniWszyscy.filter(z => z.sekcja === 'balet');
+            const chorKwalifikowani = zakwalifikowaniWszyscy.filter(z => z.sekcja === 'chór');
+            const kapelaKwalifikowani = zakwalifikowaniWszyscy.filter(z => z.sekcja === 'kapela');
+
+            // Przydział układów[cite: 1]
+            const baletPrograms = programyDlaKoncertu.filter(p => ['baletowy', 'ogólny'].includes(p.typ_ukladu));
+            const chorPrograms = programyDlaKoncertu.filter(p => ['chóralny', 'ogólny'].includes(p.typ_ukladu));
+            const kapelaPrograms = programyDlaKoncertu.filter(p => ['kapeli', 'ogólny'].includes(p.typ_ukladu));
 
             return (
               <div key={koncert.id} style={{ borderLeft: widok === 'nadchodzace' ? '6px solid #8b5cf6' : '6px solid #94a3b8', padding: '20px', backgroundColor: widok === 'nadchodzace' ? '#faf5ff' : '#f8fafc', borderRadius: '8px', borderTop: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', boxShadow: '0 2px 4px rgba(0,0,0,0.01)' }}>
@@ -513,7 +606,7 @@ export default function Koncerty({ profile }) {
                           {podzakladka === 'macierz' && (
                             <div>
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
-                                <h5 style={{ margin: 0, fontSize: '15px', color: '#1e293b' }}>Interaktywna Macierz Obsady (Klikaj, aby dodawać członków do układu)</h5>
+                                <h5 style={{ margin: 0, fontSize: '15px', color: '#1e293b' }}>Zarządzaj Obsadą (Klikaj w kratki, by dodawać 1)</h5>
                                 <button 
                                   onClick={() => eksportujDoExcela(koncert, zapisani, programyDlaKoncertu)} 
                                   style={{ padding: '8px 16px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}
@@ -524,48 +617,14 @@ export default function Koncerty({ profile }) {
 
                               {programyDlaKoncertu.length === 0 ? (
                                 <p style={{ fontSize: '13px', color: '#718096' }}>Dodaj najpierw programy w zakładce "Program", aby wygenerować macierz.</p>
-                              ) : zakwalifikowaniPosortowani.length === 0 ? (
+                              ) : zakwalifikowaniWszyscy.length === 0 ? (
                                 <p style={{ fontSize: '13px', color: '#718096' }}>Nie ma jeszcze żadnych zakwalifikowanych członków. Zakwalifikuj ich w zakładce Skład.</p>
                               ) : (
-                                <div style={{ overflowX: 'auto', border: '1px solid #cbd5e1', borderRadius: '8px' }}>
-                                  <table style={{ minWidth: '100%', borderCollapse: 'collapse', fontSize: '13px', backgroundColor: '#fff' }}>
-                                    <thead style={{ backgroundColor: '#f1f5f9' }}>
-                                      <tr>
-                                        <th style={{ padding: '10px', borderRight: '1px solid #cbd5e1', borderBottom: '1px solid #cbd5e1', textAlign: 'left' }}>Sekcja</th>
-                                        <th style={{ padding: '10px', borderRight: '1px solid #cbd5e1', borderBottom: '1px solid #cbd5e1', textAlign: 'left' }}>Głos / Grupa</th>
-                                        <th style={{ padding: '10px', borderRight: '2px solid #94a3b8', borderBottom: '1px solid #cbd5e1', textAlign: 'left' }}>Imię i nazwisko</th>
-                                        {programyDlaKoncertu.map((prog, idx) => (
-                                          <th key={prog.id} style={{ padding: '10px', borderRight: '1px solid #cbd5e1', borderBottom: '1px solid #cbd5e1', textAlign: 'center', writingMode: 'vertical-rl', transform: 'rotate(180deg)', whiteSpace: 'nowrap', maxHeight: '150px' }}>
-                                            {idx + 1}. {prog.tytul_ukladu}
-                                          </th>
-                                        ))}
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {zakwalifikowaniPosortowani.map(osoba => (
-                                        <tr key={osoba.id_uzytkownika} style={{ borderBottom: '1px solid #e2e8f0', '&:hover': { backgroundColor: '#f8fafc' } }}>
-                                          <td style={{ padding: '8px 10px', borderRight: '1px solid #e2e8f0', textTransform: 'uppercase', fontSize: '11px', fontWeight: 'bold', color: '#64748b' }}>{osoba.sekcja}</td>
-                                          <td style={{ padding: '8px 10px', borderRight: '1px solid #e2e8f0', fontSize: '12px' }}>{osoba.glos || '-'}</td>
-                                          <td style={{ padding: '8px 10px', borderRight: '2px solid #94a3b8', fontWeight: 'bold', color: '#1e293b' }}>{osoba.imie_nazwisko}</td>
-                                          {programyDlaKoncertu.map(prog => {
-                                            const czyAktualnieW = (obsadyProgramow[prog.id] || []).includes(osoba.id_uzytkownika);
-                                            return (
-                                              <td 
-                                                key={prog.id} 
-                                                style={{ padding: '0', borderRight: '1px solid #e2e8f0', textAlign: 'center', backgroundColor: czyAktualnieW ? '#d1fae5' : '#ffffff', cursor: canManageProgram ? 'pointer' : 'default', transition: 'background-color 0.1s' }}
-                                                onClick={() => { if(canManageProgram) przelaczObsadeWMacierzy(prog.id, osoba.id_uzytkownika, czyAktualnieW) }}
-                                              >
-                                                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', minHeight: '35px' }}>
-                                                  {czyAktualnieW ? <span style={{ color: '#10b981', fontWeight: 'bold', fontSize: '16px' }}>1</span> : <span style={{ color: '#cbd5e1', fontSize: '10px' }}>-</span>}
-                                                </div>
-                                              </td>
-                                            );
-                                          })}
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
-                                </div>
+                                <>
+                                  {renderMacierzUI('Balet', '🩰', ['Pani', 'Pan', ''], baletKwalifikowani, baletPrograms)}
+                                  {renderMacierzUI('Chór', '🎤', ['Sopran', 'Alt', 'Tenor', 'Bas', ''], chorKwalifikowani, chorPrograms)}
+                                  {renderMacierzUI('Kapela', '🎻', [''], kapelaKwalifikowani, kapelaPrograms)}
+                                </>
                               )}
                             </div>
                           )}
