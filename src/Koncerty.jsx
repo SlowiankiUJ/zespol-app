@@ -40,7 +40,7 @@ export default function Koncerty({ profile }) {
   const [zapisaniNaKoncert, setZapisaniNaKoncert] = useState({});
   const [programyKoncertow, setProgramyKoncertow] = useState({});
   const [obsadyProgramow, setObsadyProgramow] = useState({});
-  const [goscieMacierzy, setGoscieMacierzy] = useState({}); // Nowy stan do "gości" w macierzy
+  const [goscieMacierzy, setGoscieMacierzy] = useState({}); 
   const [aktywnaPodzakladka, setAktywnaPodzakladka] = useState({});
   const [rozwinieteSklady, setRozwinieteSklady] = useState({});
   const [wybranyKoncertWalizki, setWybranyKoncertWalizki] = useState(null);
@@ -48,6 +48,11 @@ export default function Koncerty({ profile }) {
   const [widok, setWidok] = useState('nadchodzace');
   const [noweUklady, setNoweUklady] = useState({});
   const [nowyTypUkladu, setNowyTypUkladu] = useState({});
+
+  // STANY DLA EDYCJI PUNKTÓW PROGRAMU
+  const [edycjaProgramuId, setEdycjaProgramuId] = useState(null);
+  const [editTytulUkladu, setEditTytulUkladu] = useState('');
+  const [editTypUkladu, setEditTypUkladu] = useState('');
 
   const [tytul, setTytul] = useState('');
   const [dataKoncertu, setDataKoncertu] = useState('');
@@ -208,6 +213,32 @@ export default function Koncerty({ profile }) {
     if (!window.confirm('Czy na pewno chcesz usunąć ten układ z programu?')) return;
     const { error } = await supabase.from('koncert_program').delete().eq('id', programId);
     if (!error) pobierzKoncerty();
+  };
+
+  // Funkcje edycji punktu programu
+  const rozpocznijEdycjeProgramu = (prog) => {
+    setEdycjaProgramuId(prog.id);
+    setEditTytulUkladu(prog.tytul_ukladu);
+    setEditTypUkladu(prog.typ_ukladu || 'baletowy');
+  };
+
+  const anulujEdycjeProgramu = () => {
+    setEdycjaProgramuId(null);
+  };
+
+  const zapiszEdycjeProgramu = async (programId) => {
+    if (!editTytulUkladu || editTytulUkladu.trim() === '') return;
+    const { error } = await supabase.from('koncert_program').update({ 
+      tytul_ukladu: editTytulUkladu.trim(), 
+      typ_ukladu: editTypUkladu 
+    }).eq('id', programId);
+    
+    if (!error) {
+      setEdycjaProgramuId(null);
+      pobierzKoncerty();
+    } else {
+      alert('Błąd zapisu: ' + error.message);
+    }
   };
 
   const przypiszDoObsady = async (programId, userId) => {
@@ -431,7 +462,6 @@ export default function Koncerty({ profile }) {
           </table>
         </div>
 
-        {/* Panel dodawania osób z innych sekcji do tej macierzy */}
         {canManageProgram && wolniDoDodania.length > 0 && (
           <div style={{ padding: '12px 15px', backgroundColor: '#f1f5f9', borderTop: '1px solid #cbd5e1', display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
             <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#475569' }}>➕ Dodaj do macierzy członka z innej sekcji:</span>
@@ -551,7 +581,7 @@ export default function Koncerty({ profile }) {
                 return {
                   ...org,
                   prawdziwaSekcja: org.sekcja,
-                  sekcja: org.sekcja, // Do sortowania/widoku zostawiamy, używamy isGosc
+                  sekcja: org.sekcja, 
                   glos: g.docelowa_grupa,
                   isGosc: true,
                   id_goscia: g.id
@@ -695,11 +725,40 @@ export default function Koncerty({ profile }) {
                                 <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
                                   {programyDlaKoncertu.map((prog, index) => {
                                     const typIcon = prog.typ_ukladu === 'chóralny' ? '🎤' : prog.typ_ukladu === 'kapeli' ? '🎻' : prog.typ_ukladu === 'ogólny' ? '🎭' : '🩰';
+                                    
                                     return (
-                                      <li key={prog.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px', borderBottom: '1px solid #e2e8f0' }}>
-                                        <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#334155' }}>{index + 1}. {typIcon} {prog.tytul_ukladu}</span>
-                                        {canManageProgram && (
-                                          <button onClick={() => usunPunktProgramu(prog.id)} style={{ padding: '2px 6px', backgroundColor: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: '4px', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold' }}>Usuń układ ❌</button>
+                                      <li key={prog.id} style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '10px', borderBottom: '1px solid #e2e8f0' }}>
+                                        {edycjaProgramuId === prog.id ? (
+                                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                            <select 
+                                              value={editTypUkladu} 
+                                              onChange={(e) => setEditTypUkladu(e.target.value)}
+                                              style={{ padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '12px' }}
+                                            >
+                                              <option value="baletowy">🩰 Baletowy</option>
+                                              <option value="chóralny">🎤 Chóralny</option>
+                                              <option value="kapeli">🎻 Kapeli</option>
+                                              <option value="ogólny">🎭 Ogólny / Mieszany</option>
+                                            </select>
+                                            <input 
+                                              type="text" 
+                                              value={editTytulUkladu} 
+                                              onChange={(e) => setEditTytulUkladu(e.target.value)} 
+                                              style={{ flex: 1, padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '12px', minWidth: '150px' }} 
+                                            />
+                                            <button onClick={() => zapiszEdycjeProgramu(prog.id)} style={{ padding: '4px 10px', backgroundColor: '#10b981', color: '#fff', border: 'none', borderRadius: '4px', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}>Zapisz</button>
+                                            <button onClick={anulujEdycjeProgramu} style={{ padding: '4px 10px', backgroundColor: '#94a3b8', color: '#fff', border: 'none', borderRadius: '4px', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}>Anuluj</button>
+                                          </div>
+                                        ) : (
+                                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#334155' }}>{index + 1}. {typIcon} {prog.tytul_ukladu}</span>
+                                            {canManageProgram && (
+                                              <div style={{ display: 'flex', gap: '6px' }}>
+                                                <button onClick={() => rozpocznijEdycjeProgramu(prog)} style={{ padding: '2px 6px', backgroundColor: '#3b82f6', color: '#fff', border: 'none', borderRadius: '4px', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold' }}>Edytuj ✏️</button>
+                                                <button onClick={() => usunPunktProgramu(prog.id)} style={{ padding: '2px 6px', backgroundColor: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: '4px', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold' }}>Usuń ❌</button>
+                                              </div>
+                                            )}
+                                          </div>
                                         )}
                                       </li>
                                     );
@@ -752,7 +811,6 @@ export default function Koncerty({ profile }) {
   );
 }
 
-// Pomocniczy komponent do mapowania bloków
 function ReactFragmentHelper({ children }) {
   return <>{children}</>;
 }
