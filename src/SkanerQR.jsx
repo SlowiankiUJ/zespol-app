@@ -10,7 +10,6 @@ export default function SkanerQR({ profile }) {
 
   // TAJNY, UNIKALNY PODPIS KODU QR
   const TAJNY_TOKEN_SALI = 'ZPIT_UJ_SLOWIANKI_OFICJALNY_KOD_SALI_PROB';
-  const stałyLinkQR = window.location.origin + '?akcja=obecnosc_qr';
 
   // WSPÓŁRZĘDNE GPS SALI PRÓB
   const SALA_LATITUDE = 50.066196620302165;
@@ -55,10 +54,10 @@ export default function SkanerQR({ profile }) {
     });
   };
 
-  // Funkcja sprawdzająca GPS, bazę i zapisująca obecność
+  // Funkcja sprawdzająca GPS, bazę, czas i zapisująca obecność/spóźnienie
   const oznaczObecnoscZGeolokalizacja = async () => {
     setLoading(true);
-    setKomunikat('📍 Sprawdzanie Twojej lokalizacji GPS...');
+    setKomunikat('📍 Sprawdzanie Twojej lokalizacji GPS i godziny próby...');
 
     try {
       // 1. Sprawdzamy pozycję GPS
@@ -77,11 +76,11 @@ export default function SkanerQR({ profile }) {
         return;
       }
 
-      setKomunikat('✅ Lokalizacja potwierdzona! Weryfikacja próby w bazie...');
+      setKomunikat('✅ Lokalizacja potwierdzona! Weryfikacja harmonogramu...');
 
       // 3. Sprawdzamy czy dzisiaj jest próba w bazie
-      const dzis = new Date();
-      const dzisString = dzis.toISOString().split('T')[0];
+      const czasSkanowania = new Date();
+      const dzisString = czasSkanowania.toISOString().split('T')[0];
 
       const { data: probyDzis, error: probaErr } = await supabase
         .from('proby')
@@ -116,7 +115,20 @@ export default function SkanerQR({ profile }) {
         return;
       }
 
-      // 4. Zapisujemy obecność
+      // 4. WERYFIKACJA SPÓŹNIENIA (Tolerancja 15 minut od zaplanowanego startu)
+      const czasRozpoczeciaProby = new Date(dzisiejszaProba.data_czas);
+      const roznicaMinut = (czasSkanowania - czasRozpoczeciaProby) / (1000 * 60);
+
+      let czySpozniony = false;
+      let czyObecny = true; // domyślnie pełna obecność
+
+      // Jeśli zeskanował kod ponad 15 minut po dacie startu próby -> Spóźnienie
+      if (roznicaMinut > 15) {
+        czySpozniony = true;
+        czyObecny = null; // Tak jak ustalone w systemie, spóźnienie ma status obecny:null + spozniony:true
+      }
+
+      // 5. Zapisujemy obecność w bazie
       const { error: upsertErr } = await supabase
         .from('deklaracje_obecnosci')
         .upsert([
@@ -124,13 +136,20 @@ export default function SkanerQR({ profile }) {
             id_proby: dzisiejszaProba.id,
             id_uzytkownika: profile.id,
             planuje: true,
-            obecny: true
+            obecny: czyObecny,
+            spozniony: czySpozniony
           }
         ], { onConflict: 'id_proby, id_uzytkownika' });
 
       if (upsertErr) throw upsertErr;
 
-      setKomunikat('🎉 Sukces! Zeskanowano kod QR i potwierdzono obecność na sali! 🔥');
+      // Wyświetlamy odpowiedni komunikat dla użytkownika
+      if (czySpozniony) {
+        setKomunikat(`⏰ Zeskanowano pomyślnie, ale odnotowano SPÓŹNIENIE. Minęło więcej niż 15 min. od startu próby.`);
+      } else {
+        setKomunikat('🎉 Sukces! Zeskanowano kod QR i potwierdzono PUNKTUALNĄ obecność na sali! 🔥');
+      }
+
     } catch (err) {
       console.error('Błąd geolokalizacji/obecności:', err);
       setKomunikat(`❌ ${err.message || 'Wystąpił błąd podczas weryfikacji.'}`);
@@ -154,7 +173,7 @@ export default function SkanerQR({ profile }) {
           if (decodedText === TAJNY_TOKEN_SALI) {
             html5QrCode.stop().then(() => {
               setSkanuje(false);
-              oznaczObecnoscZGeolokalizacja(); // Po udanym skanie sprawdzamy GPS i bazę
+              oznaczObecnoscZGeolokalizacja(); // Po udanym skanie sprawdzamy GPS, czas i bazę
             }).catch(err => console.error("Błąd zatrzymania kamery:", err));
           } else {
             setKomunikat('⚠️ Zeskanowano nieprawidłowy kod QR! To nie jest oficjalny kod sali prób.');
@@ -181,7 +200,7 @@ export default function SkanerQR({ profile }) {
     <div style={{ marginTop: '20px', padding: '25px', border: '1px solid #e2e8f0', borderRadius: '12px', backgroundColor: '#ffffff', boxShadow: '0 4px 6px rgba(0,0,0,0.02)', textAlign: 'center' }}>
       <h2 style={{ color: '#1e293b', marginBottom: '10px', fontSize: '20px' }}>Szybka Obecność przez Kod QR 📱</h2>
       <p style={{ color: '#64748b', fontSize: '14px', marginBottom: '25px' }}>
-        Zeskanuj oficjalny kod QR sali prób i udostępnij lokalizację GPS, aby potwierdzić obecność.
+        Zeskanuj oficjalny kod QR sali prób i udostępnij lokalizację GPS, aby potwierdzić obecność. Po upływie 15 min. od startu próby otrzymasz status spóźnionego.
       </p>
 
       {/* WIDOK DLA KADRY */}
@@ -192,7 +211,7 @@ export default function SkanerQR({ profile }) {
             <QRCodeSVG value={TAJNY_TOKEN_SALI} size={200} level="H" />
           </div>
           <p style={{ fontSize: '12px', color: '#64748b', marginTop: '12px', maxWidth: '300px', marginInline: 'auto' }}>
-            Wyświetl ten kod na sali. System wymaga też, aby członek znajdował się w promieniu 200m od sali.
+            Wyświetl ten kod na sali. System wymaga też, aby członek znajdował się w promieniu 200m od sali. Skan po 15 min. nabija spóźnienie.
           </p>
         </div>
       )}
@@ -253,7 +272,17 @@ export default function SkanerQR({ profile }) {
       {loading && <p style={{ marginTop: '15px', color: '#64748b', fontWeight: '500' }}>{komunikat}</p>}
 
       {komunikat && !loading && (
-        <div style={{ marginTop: '20px', padding: '12px', borderRadius: '8px', backgroundColor: komunikat.includes('✅') || komunikat.includes('🎉') ? '#f0fdf4' : '#fef2f2', border: `1px solid ${komunikat.includes('✅') || komunikat.includes('🎉') ? '#bbf7d0' : '#fecaca'}`, color: komunikat.includes('✅') || komunikat.includes('🎉') ? '#15803d' : '#991b1b', fontWeight: '600', fontSize: '14px', display: 'inline-block' }}>
+        <div style={{ 
+          marginTop: '20px', 
+          padding: '12px', 
+          borderRadius: '8px', 
+          backgroundColor: komunikat.includes('🎉') ? '#f0fdf4' : (komunikat.includes('⏰') ? '#fffbeb' : '#fef2f2'), 
+          border: `1px solid ${komunikat.includes('🎉') ? '#bbf7d0' : (komunikat.includes('⏰') ? '#fde68a' : '#fecaca')}`, 
+          color: komunikat.includes('🎉') ? '#15803d' : (komunikat.includes('⏰') ? '#b45309' : '#991b1b'), 
+          fontWeight: '600', 
+          fontSize: '14px', 
+          display: 'inline-block' 
+        }}>
           {komunikat}
         </div>
       )}
