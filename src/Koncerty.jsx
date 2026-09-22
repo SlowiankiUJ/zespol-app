@@ -40,6 +40,7 @@ export default function Koncerty({ profile }) {
   const [zapisaniNaKoncert, setZapisaniNaKoncert] = useState({});
   const [programyKoncertow, setProgramyKoncertow] = useState({});
   const [obsadyProgramow, setObsadyProgramow] = useState({});
+  const [goscieMacierzy, setGoscieMacierzy] = useState({}); // Nowy stan do "gości" w macierzy
   const [aktywnaPodzakladka, setAktywnaPodzakladka] = useState({});
   const [rozwinieteSklady, setRozwinieteSklady] = useState({});
   const [wybranyKoncertWalizki, setWybranyKoncertWalizki] = useState(null);
@@ -76,6 +77,7 @@ export default function Koncerty({ profile }) {
       if (profile.rola === 'członek') pobierzMojeDeklaracjeKoncertow();
       pobierzWszystkichZapisanych(data);
       pobierzProgramy(data);
+      pobierzGosciMacierzy(data);
     }
   };
 
@@ -130,6 +132,21 @@ export default function Koncerty({ profile }) {
         }
         setObsadyProgramow(mapaObsad);
       }
+    }
+  };
+
+  const pobierzGosciMacierzy = async (listaKoncertow) => {
+    const koncertIds = listaKoncertow.map(k => k.id);
+    if (koncertIds.length === 0) return;
+
+    const { data } = await supabase.from('koncert_goscie_macierzy').select('*').in('id_koncertu', koncertIds);
+    if (data) {
+      const mapa = {};
+      koncertIds.forEach(id => mapa[id] = []);
+      data.forEach(g => {
+        if (mapa[g.id_koncertu]) mapa[g.id_koncertu].push(g);
+      });
+      setGoscieMacierzy(mapa);
     }
   };
 
@@ -193,6 +210,15 @@ export default function Koncerty({ profile }) {
     if (!error) pobierzKoncerty();
   };
 
+  const przypiszDoObsady = async (programId, userId) => {
+    const { error } = await supabase.from('koncert_obsada').insert([{ id_programu: programId, id_uzytkownika: userId }]);
+    if (!error) pobierzKoncerty();
+  };
+  const usunZObsady = async (programId, userId) => {
+    const { error } = await supabase.from('koncert_obsada').delete().eq('id_programu', programId).eq('id_uzytkownika', userId);
+    if (!error) pobierzKoncerty();
+  };
+
   const przelaczObsadeWMacierzy = async (programId, userId, czyBylOznaczony) => {
     setObsadyProgramow(prev => {
       const aktualniCzlonkowie = prev[programId] || [];
@@ -210,23 +236,37 @@ export default function Koncerty({ profile }) {
     }
   };
 
+  const dodajGosciaDoMacierzy = async (koncertId, userId, macierz, grupa) => {
+    if (!userId) return;
+    const { error } = await supabase.from('koncert_goscie_macierzy').insert([{
+      id_koncertu: koncertId,
+      id_uzytkownika: userId,
+      docelowa_macierz: macierz,
+      docelowa_grupa: grupa
+    }]);
+    if (!error) pobierzKoncerty();
+    else alert('Błąd: ' + error.message);
+  };
+
+  const usunGosciaZMacierzy = async (goscId) => {
+    if (!window.confirm('Czy na pewno usunąć tę osobę z macierzy? (Zniknie stąd, ale pozostanie w swojej głównej sekcji)')) return;
+    const { error } = await supabase.from('koncert_goscie_macierzy').delete().eq('id', goscId);
+    if (!error) pobierzKoncerty();
+  };
+
   const przelaczRozwiniecieSkladu = (koncertId) => { setRozwinieteSklady(prev => ({ ...prev, [koncertId]: !prev[koncertId] })); };
   const ustawPodzakladke = (koncertId, tab) => { setAktywnaPodzakladka(prev => ({ ...prev, [koncertId]: tab })); };
 
   // ----------------------------------------------------
   // GENERATOR PLIKÓW EXCEL (.XLSX)
   // ----------------------------------------------------
-  const eksportujDoExcela = (koncert, wszyscyZgloszeni, programyTegoKoncertu) => {
+  const eksportujDoExcela = (koncert, wszyscyZgloszeni, programyTegoKoncertu, bKwal, cKwal, kKwal) => {
     const chetni = wszyscyZgloszeni.filter(z => z.planuje === true);
-    const zakwalifikowani = sortujOsoby(chetni.filter(z => z.zakwalifikowany === true));
     
+    // Grupowanie układów według sekcji
     const baletPrograms = programyTegoKoncertu.filter(p => ['baletowy', 'ogólny'].includes(p.typ_ukladu));
     const chorPrograms = programyTegoKoncertu.filter(p => ['chóralny', 'ogólny'].includes(p.typ_ukladu));
     const kapelaPrograms = programyTegoKoncertu.filter(p => ['kapeli', 'ogólny'].includes(p.typ_ukladu));
-
-    const baletKwalifikowani = zakwalifikowani.filter(z => z.sekcja === 'balet');
-    const chorKwalifikowani = zakwalifikowani.filter(z => z.sekcja === 'chór');
-    const kapelaKwalifikowani = zakwalifikowani.filter(z => z.sekcja === 'kapela');
 
     // ================== ARKUSZ 1: ZGŁOSZENI ==================
     const daneArkusz1 = [
@@ -262,7 +302,9 @@ export default function Koncerty({ profile }) {
         isFirstGrupaInSekcja = false;
 
         osobyWGrupie.forEach(o => {
-          const wierszOsoby = ['', '', o.imie_nazwisko];
+          // Dla gości wstawiamy adnotację z ich prawdziwą sekcją do Excela
+          const imieZNazwiskiem = o.isGosc ? `${o.imie_nazwisko} (${o.prawdziwaSekcja})` : o.imie_nazwisko;
+          const wierszOsoby = ['', '', imieZNazwiskiem];
           
           programy.forEach(prog => {
             const czyWystepuje = (obsadyProgramow[prog.id] || []).includes(o.id_uzytkownika);
@@ -275,9 +317,9 @@ export default function Koncerty({ profile }) {
       daneArkusz2.push([]);
     };
 
-    generujSekcjeDoExcela('Balet', ['Pani', 'Pan', ''], baletKwalifikowani, baletPrograms);
-    generujSekcjeDoExcela('Chór', ['Sopran', 'Alt', 'Tenor', 'Bas', ''], chorKwalifikowani, chorPrograms);
-    generujSekcjeDoExcela('Kapela', [''], kapelaKwalifikowani, kapelaPrograms);
+    generujSekcjeDoExcela('Balet', ['Pani', 'Pan', ''], bKwal, baletPrograms);
+    generujSekcjeDoExcela('Chór', ['Sopran', 'Alt', 'Tenor', 'Bas', ''], cKwal, chorPrograms);
+    generujSekcjeDoExcela('Kapela', [''], kKwal, kapelaPrograms);
 
     const wb = XLSX.utils.book_new();
     const ws1 = XLSX.utils.aoa_to_sheet(daneArkusz1);
@@ -286,7 +328,7 @@ export default function Koncerty({ profile }) {
     ws1['!cols'] = [{wch: 12}, {wch: 15}, {wch: 25}, {wch: 20}];
     
     const maxProg = Math.max(baletPrograms.length, chorPrograms.length, kapelaPrograms.length);
-    const colsA2 = [{wch: 12}, {wch: 15}, {wch: 25}];
+    const colsA2 = [{wch: 12}, {wch: 15}, {wch: 30}]; // Zwiększona szerokość nazwiska
     for(let i=0; i<maxProg; i++) colsA2.push({wch: 15});
     ws2['!cols'] = colsA2;
 
@@ -298,76 +340,130 @@ export default function Koncerty({ profile }) {
   };
 
   // ----------------------------------------------------
-  // RENDERER UI Z PODZIAŁEM W STYLU EXCELA
+  // RENDERER UI Z PODZIAŁEM W STYLU EXCELA I OCHOTNIKAMI
   // ----------------------------------------------------
-  const renderMacierzUI = (nazwaSekcji, ikonaSekcji, grupy, osoby, programy) => {
-    if (osoby.length === 0) return null;
+  const renderMacierzUI = (koncertId, nazwaSekcji, ikonaSekcji, grupy, osoby, programy, wszyscyZakwalifikowani) => {
+    if (osoby.length === 0 && programy.length === 0) return null;
 
     let isFirstGroupGlobal = true;
 
+    // Filtrujemy dropdowna żeby nie można było dodać osoby, która już tam jest
+    const wolniDoDodania = wszyscyZakwalifikowani.filter(z => !osoby.some(o => o.id_uzytkownika === z.id_uzytkownika));
+    
+    const dropdownOpcje = nazwaSekcji === 'Balet' 
+      ? <><option value="">-- Wybierz płeć --</option><option value="Pani">Pani</option><option value="Pan">Pan</option></>
+      : nazwaSekcji === 'Chór'
+      ? <><option value="">-- Wybierz głos --</option><option value="Sopran">Sopran</option><option value="Alt">Alt</option><option value="Tenor">Tenor</option><option value="Bas">Bas</option></>
+      : <option value="">Ogólna</option>;
+
     return (
-      <div style={{ marginBottom: '30px', overflowX: 'auto', border: '1px solid #cbd5e1', borderRadius: '8px' }}>
+      <div style={{ marginBottom: '30px', border: '1px solid #cbd5e1', borderRadius: '8px', overflow: 'hidden' }}>
         <h5 style={{ margin: 0, padding: '12px 15px', backgroundColor: '#f8fafc', color: '#1e293b', borderBottom: '1px solid #cbd5e1' }}>
           {ikonaSekcji} Macierz: {nazwaSekcji}
         </h5>
-        <table style={{ minWidth: '100%', borderCollapse: 'collapse', fontSize: '13px', backgroundColor: '#fff' }}>
-          <thead style={{ backgroundColor: '#f1f5f9' }}>
-            <tr>
-              <th style={{ padding: '10px', borderRight: '1px solid #cbd5e1', borderBottom: '2px solid #94a3b8', textAlign: 'left', width: '90px' }}>Sekcja</th>
-              <th style={{ padding: '10px', borderRight: '1px solid #cbd5e1', borderBottom: '2px solid #94a3b8', textAlign: 'left', width: '110px' }}>Grupa/Głos</th>
-              <th style={{ padding: '10px', borderRight: '2px solid #94a3b8', borderBottom: '2px solid #94a3b8', textAlign: 'left', width: '220px' }}>Imię i nazwisko</th>
-              {programy.map((prog) => (
-                <th key={prog.id} style={{ padding: '10px', borderRight: '1px solid #cbd5e1', borderBottom: '2px solid #94a3b8', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                  {prog.tytul_ukladu}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {grupy.map((grupa) => {
-              const osobyWGrupie = osoby.filter(o => (o.glos || '') === grupa);
-              if (osobyWGrupie.length === 0 && grupa !== '') return null;
+        
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ minWidth: '100%', borderCollapse: 'collapse', fontSize: '13px', backgroundColor: '#fff' }}>
+            <thead style={{ backgroundColor: '#f1f5f9' }}>
+              <tr>
+                <th style={{ padding: '10px', borderRight: '1px solid #cbd5e1', borderBottom: '2px solid #94a3b8', textAlign: 'left', width: '90px' }}>Sekcja</th>
+                <th style={{ padding: '10px', borderRight: '1px solid #cbd5e1', borderBottom: '2px solid #94a3b8', textAlign: 'left', width: '110px' }}>Grupa/Głos</th>
+                <th style={{ padding: '10px', borderRight: '2px solid #94a3b8', borderBottom: '2px solid #94a3b8', textAlign: 'left', width: '220px' }}>Imię i nazwisko</th>
+                {programy.map((prog) => (
+                  <th key={prog.id} style={{ padding: '10px', borderRight: '1px solid #cbd5e1', borderBottom: '2px solid #94a3b8', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                    {prog.tytul_ukladu}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {grupy.map((grupa) => {
+                const osobyWGrupie = osoby.filter(o => (o.glos || '') === grupa);
+                if (osobyWGrupie.length === 0 && grupa !== '') return null;
 
-              const nazwaSekcjiDoWyswietlenia = isFirstGroupGlobal ? nazwaSekcji : '';
-              isFirstGroupGlobal = false;
+                const nazwaSekcjiDoWyswietlenia = isFirstGroupGlobal ? nazwaSekcji : '';
+                isFirstGroupGlobal = false;
 
-              return (
-                <ReactFragmentHelper key={grupa || 'brak'}>
-                  {/* Wiersz grupy / głosu */}
-                  <tr style={{ backgroundColor: '#f8fafc', fontWeight: 'bold' }}>
-                    <td style={{ padding: '8px 10px', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', color: '#0f172a' }}>{nazwaSekcjiDoWyswietlenia}</td>
-                    <td style={{ padding: '8px 10px', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', color: '#d97706' }}>{grupa || 'Ogólne'}</td>
-                    <td style={{ padding: '8px 10px', borderRight: '2px solid #94a3b8', borderBottom: '1px solid #e2e8f0' }}></td>
-                    {programy.map(p => <td key={`empty-${p.id}`} style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}></td>)}
-                  </tr>
-                  
-                  {/* Wiersze z osobami należącymi do danej grupy */}
-                  {osobyWGrupie.map(osoba => (
-                    <tr key={osoba.id_uzytkownika}>
-                      <td style={{ padding: '8px 10px', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}></td>
-                      <td style={{ padding: '8px 10px', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}></td>
-                      <td style={{ padding: '8px 10px', borderRight: '2px solid #94a3b8', borderBottom: '1px solid #e2e8f0', color: '#1e293b' }}>{osoba.imie_nazwisko}</td>
-                      {programy.map(prog => {
-                        const czyAktualnieW = (obsadyProgramow[prog.id] || []).includes(osoba.id_uzytkownika);
-                        return (
-                          <td 
-                            key={prog.id} 
-                            style={{ padding: '0', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', textAlign: 'center', backgroundColor: czyAktualnieW ? '#d1fae5' : '#ffffff', cursor: canManageProgram ? 'pointer' : 'default', transition: 'background-color 0.1s' }}
-                            onClick={() => { if(canManageProgram) przelaczObsadeWMacierzy(prog.id, osoba.id_uzytkownika, czyAktualnieW) }}
-                          >
-                            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', minHeight: '35px' }}>
-                              {czyAktualnieW ? <span style={{ color: '#10b981', fontWeight: '900', fontSize: '16px' }}>1</span> : <span style={{ color: '#cbd5e1', fontSize: '12px' }}>-</span>}
-                            </div>
-                          </td>
-                        );
-                      })}
+                return (
+                  <ReactFragmentHelper key={grupa || 'brak'}>
+                    <tr style={{ backgroundColor: '#f8fafc', fontWeight: 'bold' }}>
+                      <td style={{ padding: '8px 10px', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', color: '#0f172a' }}>{nazwaSekcjiDoWyswietlenia}</td>
+                      <td style={{ padding: '8px 10px', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', color: '#d97706' }}>{grupa || 'Ogólne'}</td>
+                      <td style={{ padding: '8px 10px', borderRight: '2px solid #94a3b8', borderBottom: '1px solid #e2e8f0' }}></td>
+                      {programy.map(p => <td key={`empty-${p.id}`} style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}></td>)}
                     </tr>
-                  ))}
-                </ReactFragmentHelper>
-              );
-            })}
-          </tbody>
-        </table>
+                    
+                    {osobyWGrupie.map(osoba => (
+                      <tr key={osoba.id_uzytkownika}>
+                        <td style={{ padding: '8px 10px', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}></td>
+                        <td style={{ padding: '8px 10px', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}></td>
+                        <td style={{ padding: '8px 10px', borderRight: '2px solid #94a3b8', borderBottom: '1px solid #e2e8f0', color: '#1e293b' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span>
+                              {osoba.imie_nazwisko}
+                              {osoba.isGosc && <span style={{ color: '#8b5cf6', fontSize: '11px', marginLeft: '4px' }}>({osoba.prawdziwaSekcja})</span>}
+                            </span>
+                            {osoba.isGosc && canManageProgram && (
+                              <button onClick={() => usunGosciaZMacierzy(osoba.id_goscia)} style={{ background: 'none', border: 'none', color: '#ef4444', fontWeight: 'bold', cursor: 'pointer', fontSize: '12px' }} title="Usuń gościa z macierzy">❌</button>
+                            )}
+                          </div>
+                        </td>
+                        {programy.map(prog => {
+                          const czyAktualnieW = (obsadyProgramow[prog.id] || []).includes(osoba.id_uzytkownika);
+                          return (
+                            <td 
+                              key={prog.id} 
+                              style={{ padding: '0', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', textAlign: 'center', backgroundColor: czyAktualnieW ? '#d1fae5' : '#ffffff', cursor: canManageProgram ? 'pointer' : 'default', transition: 'background-color 0.1s' }}
+                              onClick={() => { if(canManageProgram) przelaczObsadeWMacierzy(prog.id, osoba.id_uzytkownika, czyAktualnieW) }}
+                            >
+                              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', minHeight: '35px' }}>
+                                {czyAktualnieW ? <span style={{ color: '#10b981', fontWeight: '900', fontSize: '16px' }}>1</span> : <span style={{ color: '#cbd5e1', fontSize: '12px' }}>-</span>}
+                              </div>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </ReactFragmentHelper>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Panel dodawania osób z innych sekcji do tej macierzy */}
+        {canManageProgram && wolniDoDodania.length > 0 && (
+          <div style={{ padding: '12px 15px', backgroundColor: '#f1f5f9', borderTop: '1px solid #cbd5e1', display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#475569' }}>➕ Dodaj do macierzy członka z innej sekcji:</span>
+            <select id={`gosc-user-${koncertId}-${nazwaSekcji}`} style={{ padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '12px' }}>
+              <option value="">-- Wybierz członka --</option>
+              {sortujOsoby(wolniDoDodania).map(z => (
+                <option key={z.id_uzytkownika} value={z.id_uzytkownika}>{z.imie_nazwisko} ({z.sekcja})</option>
+              ))}
+            </select>
+            {nazwaSekcji !== 'Kapela' && (
+              <select id={`gosc-grupa-${koncertId}-${nazwaSekcji}`} style={{ padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '12px' }}>
+                {dropdownOpcje}
+              </select>
+            )}
+            <button 
+              onClick={() => {
+                const userSel = document.getElementById(`gosc-user-${koncertId}-${nazwaSekcji}`);
+                const grupaSel = document.getElementById(`gosc-grupa-${koncertId}-${nazwaSekcji}`);
+                const wybranaGrupa = grupaSel ? grupaSel.value : '';
+                
+                if (userSel && userSel.value) {
+                  dodajGosciaDoMacierzy(koncertId, userSel.value, nazwaSekcji, wybranaGrupa);
+                  userSel.value = '';
+                  if(grupaSel) grupaSel.value = '';
+                }
+              }}
+              style={{ padding: '6px 12px', backgroundColor: '#3182ce', color: '#fff', border: 'none', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer' }}
+            >
+              Dodaj
+            </button>
+          </div>
+        )}
       </div>
     );
   };
@@ -444,14 +540,33 @@ export default function Koncerty({ profile }) {
             const czyEdytowany = edycjaKoncertId === koncert.id;
 
             const chetni = zapisani.filter(z => z.planuje === true);
-            const balet = chetni.filter(z => z.sekcja === 'balet');
-            const chor = chetni.filter(z => z.sekcja === 'chór');
-            const kapela = chetni.filter(z => z.sekcja === 'kapela');
-            
             const zakwalifikowaniWszyscy = chetni.filter(z => z.zakwalifikowany === true);
-            const baletKwalifikowani = zakwalifikowaniWszyscy.filter(z => z.sekcja === 'balet');
-            const chorKwalifikowani = zakwalifikowaniWszyscy.filter(z => z.sekcja === 'chór');
-            const kapelaKwalifikowani = zakwalifikowaniWszyscy.filter(z => z.sekcja === 'kapela');
+            
+            // Mapowanie Gości
+            const goscieTegoKoncertu = goscieMacierzy[koncert.id] || [];
+            const mapujGosci = (macierz) => {
+              return goscieTegoKoncertu.filter(g => g.docelowa_macierz === macierz).map(g => {
+                const org = zakwalifikowaniWszyscy.find(z => z.id_uzytkownika === g.id_uzytkownika);
+                if (!org) return null;
+                return {
+                  ...org,
+                  prawdziwaSekcja: org.sekcja,
+                  sekcja: org.sekcja, // Do sortowania/widoku zostawiamy, używamy isGosc
+                  glos: g.docelowa_grupa,
+                  isGosc: true,
+                  id_goscia: g.id
+                };
+              }).filter(Boolean);
+            };
+
+            const bazowyBalet = zakwalifikowaniWszyscy.filter(z => z.sekcja === 'balet');
+            const bazowyChor = zakwalifikowaniWszyscy.filter(z => z.sekcja === 'chór');
+            const bazowaKapela = zakwalifikowaniWszyscy.filter(z => z.sekcja === 'kapela');
+
+            // Listy do macierzy (bazowi + "goście")
+            const baletKwalifikowani = sortujOsoby([...bazowyBalet, ...mapujGosci('Balet')]);
+            const chorKwalifikowani = sortujOsoby([...bazowyChor, ...mapujGosci('Chór')]);
+            const kapelaKwalifikowani = sortujOsoby([...bazowaKapela, ...mapujGosci('Kapela')]);
 
             const baletPrograms = programyDlaKoncertu.filter(p => ['baletowy', 'ogólny'].includes(p.typ_ukladu));
             const chorPrograms = programyDlaKoncertu.filter(p => ['chóralny', 'ogólny'].includes(p.typ_ukladu));
@@ -523,9 +638,9 @@ export default function Koncerty({ profile }) {
                           {podzakladka === 'sklad' && (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
                               <div>
-                                <h5 style={{ margin: '0 0 8px 0', fontSize: '15px', color: '#1e293b', borderBottom: '2px solid #8b5cf6', paddingBottom: '4px' }}>🩰 Balet (Ogółem: {balet.length} zgłoszonych)</h5>
+                                <h5 style={{ margin: '0 0 8px 0', fontSize: '15px', color: '#1e293b', borderBottom: '2px solid #8b5cf6', paddingBottom: '4px' }}>🩰 Balet (Ogółem: {bazowyBalet.length} zgłoszonych)</h5>
                                 {['Pani', 'Pan'].map(grupaName => {
-                                  const osobyGrupy = balet.filter(o => o.glos === grupaName);
+                                  const osobyGrupy = bazowyBalet.filter(o => o.glos === grupaName);
                                   if (osobyGrupy.length === 0) return null;
                                   return (
                                     <div key={grupaName} style={{ marginTop: '10px', paddingLeft: '10px' }}>
@@ -533,25 +648,25 @@ export default function Koncerty({ profile }) {
                                     </div>
                                   );
                                 })}
-                                {balet.some(o => !o.glos) && (
+                                {bazowyBalet.some(o => !o.glos) && (
                                   <div style={{ marginTop: '10px', paddingLeft: '10px' }}>
-                                    {renderujListeOsobek('• Bez przypisania', balet.filter(o => !o.glos), koncert.id, profile, zmienKwalifikacje, true)}
+                                    {renderujListeOsobek('• Bez przypisania', bazowyBalet.filter(o => !o.glos), koncert.id, profile, zmienKwalifikacje, true)}
                                   </div>
                                 )}
-                                {balet.length === 0 && <p style={{ fontSize: '13px', color: '#94a3b8', margin: '0' }}>Brak zgłoszeń w balecie</p>}
+                                {bazowyBalet.length === 0 && <p style={{ fontSize: '13px', color: '#94a3b8', margin: '0' }}>Brak zgłoszeń w balecie</p>}
                               </div>
 
                               <div>
-                                <h5 style={{ margin: '0 0 8px 0', fontSize: '15px', color: '#1e293b', borderBottom: '2px solid #d69e2e', paddingBottom: '4px' }}>🎤 Chór (Ogółem: {chor.length} zgłoszonych)</h5>
+                                <h5 style={{ margin: '0 0 8px 0', fontSize: '15px', color: '#1e293b', borderBottom: '2px solid #d69e2e', paddingBottom: '4px' }}>🎤 Chór (Ogółem: {bazowyChor.length} zgłoszonych)</h5>
                                 {['Sopran', 'Alt', 'Tenor', 'Bas'].map(glosName => {
-                                  const osobyGlosu = chor.filter(o => (o.glos || 'Sopran') === glosName);
+                                  const osobyGlosu = bazowyChor.filter(o => (o.glos || 'Sopran') === glosName);
                                   if (osobyGlosu.length === 0) return null;
                                   return <div key={glosName} style={{ marginTop: '10px', paddingLeft: '10px' }}>{renderujListeOsobek(`• ${glosName}`, osobyGlosu, koncert.id, profile, zmienKwalifikacje, true)}</div>;
                                 })}
-                                {chor.length === 0 && <p style={{ fontSize: '13px', color: '#94a3b8', margin: '0' }}>Brak zgłoszeń w chórze</p>}
+                                {bazowyChor.length === 0 && <p style={{ fontSize: '13px', color: '#94a3b8', margin: '0' }}>Brak zgłoszeń w chórze</p>}
                               </div>
 
-                              {renderujListeOsobek('🎻 Kapela', kapela, koncert.id, profile, zmienKwalifikacje)}
+                              {renderujListeOsobek('🎻 Kapela', bazowaKapela, koncert.id, profile, zmienKwalifikacje)}
                             </div>
                           )}
                           
@@ -599,7 +714,7 @@ export default function Koncerty({ profile }) {
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
                                 <h5 style={{ margin: 0, fontSize: '15px', color: '#1e293b' }}>Zarządzaj Obsadą (Klikaj w kratki, by dodawać 1)</h5>
                                 <button 
-                                  onClick={() => eksportujDoExcela(koncert, zapisani, programyDlaKoncertu)} 
+                                  onClick={() => eksportujDoExcela(koncert, zapisani, programyDlaKoncertu, baletKwalifikowani, chorKwalifikowani, kapelaKwalifikowani)} 
                                   style={{ padding: '8px 16px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}
                                 >
                                   Pobierz jako Excel (.xlsx) 📥
@@ -612,9 +727,9 @@ export default function Koncerty({ profile }) {
                                 <p style={{ fontSize: '13px', color: '#718096' }}>Nie ma jeszcze żadnych zakwalifikowanych członków. Zakwalifikuj ich w zakładce Skład.</p>
                               ) : (
                                 <>
-                                  {renderMacierzUI('Balet', '🩰', ['Pani', 'Pan', ''], baletKwalifikowani, baletPrograms)}
-                                  {renderMacierzUI('Chór', '🎤', ['Sopran', 'Alt', 'Tenor', 'Bas', ''], chorKwalifikowani, chorPrograms)}
-                                  {renderMacierzUI('Kapela', '🎻', [''], kapelaKwalifikowani, kapelaPrograms)}
+                                  {renderMacierzUI(koncert.id, 'Balet', '🩰', ['Pani', 'Pan', ''], baletKwalifikowani, baletPrograms, zakwalifikowaniWszyscy)}
+                                  {renderMacierzUI(koncert.id, 'Chór', '🎤', ['Sopran', 'Alt', 'Tenor', 'Bas', ''], chorKwalifikowani, chorPrograms, zakwalifikowaniWszyscy)}
+                                  {renderMacierzUI(koncert.id, 'Kapela', '🎻', [''], kapelaKwalifikowani, kapelaPrograms, zakwalifikowaniWszyscy)}
                                 </>
                               )}
                             </div>
