@@ -27,13 +27,17 @@ export default function Koncerty({ profile }) {
   const [rozwinieteSklady, setRozwinieteSklady] = useState({});
   const [wybranyKoncertWalizki, setWybranyKoncertWalizki] = useState(null);
 
+  // Widoki i nowe stany do dodawania układów
+  const [widok, setWidok] = useState('nadchodzace');
+  const [noweUklady, setNoweUklady] = useState({});
+  const [nowyTypUkladu, setNowyTypUkladu] = useState({}); // Przechowuje typ wybranego układu (baletowy, chóralny itp.)
+
   const [tytul, setTytul] = useState('');
   const [dataKoncertu, setDataKoncertu] = useState('');
   const [godzinaKoncertu, setGodzinaKoncertu] = useState('18:00');
   const [miejsce, setMiejsce] = useState('');
   const [programOpis, setProgramOpis] = useState('');
   const [komunikat, setKomunikat] = useState('');
-  const [noweUklady, setNoweUklady] = useState({});
 
   const [edycjaKoncertId, setEdycjaKoncertId] = useState(null);
   const [editTytul, setEditTytul] = useState('');
@@ -93,6 +97,7 @@ export default function Koncerty({ profile }) {
     const koncertIds = listaKoncertow.map(k => k.id);
     if (koncertIds.length === 0) return;
 
+    // Pobieramy programy wraz z nową kolumną typ_ukladu
     const { data: progData } = await supabase.from('koncert_program').select('*').in('id_koncertu', koncertIds).order('id', { ascending: true });
     if (progData) {
       const mapaProgramow = {}; 
@@ -182,9 +187,22 @@ export default function Koncerty({ profile }) {
 
   const dodajPunktProgramu = async (koncertId) => {
     const tytulUkladu = noweUklady[koncertId];
+    const typUkladu = nowyTypUkladu[koncertId] || 'baletowy'; // Domyślna wartość to baletowy
+    
     if (!tytulUkladu || tytulUkladu.trim() === '') return;
-    const { error } = await supabase.from('koncert_program').insert([{ id_koncertu: koncertId, tytul_ukladu: tytulUkladu.trim() }]);
-    if (!error) { setNoweUklady(prev => ({ ...prev, [koncertId]: '' })); pobierzKoncerty(); }
+    
+    const { error } = await supabase
+      .from('koncert_program')
+      .insert([{ 
+        id_koncertu: koncertId, 
+        tytul_ukladu: tytulUkladu.trim(),
+        typ_ukladu: typUkladu 
+      }]);
+      
+    if (!error) { 
+      setNoweUklady(prev => ({ ...prev, [koncertId]: '' })); 
+      pobierzKoncerty(); 
+    }
   };
 
   const usunPunktProgramu = async (programId) => {
@@ -208,6 +226,13 @@ export default function Koncerty({ profile }) {
 
   const inputStyle = { width: '100%', boxSizing: 'border-box', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px', backgroundColor: '#fff', color: '#000' };
   const labelStyle = { display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#64748b', marginBottom: '4px' };
+
+  // Podział na koncerty nadchodzące i odbyte
+  const teraz = new Date();
+  const nadchodzaceKoncerty = koncerty.filter(k => new Date(k.data_czas) >= teraz);
+  const odbyteKoncerty = koncerty.filter(k => new Date(k.data_czas) < teraz).sort((a, b) => new Date(b.data_czas) - new Date(a.data_czas));
+
+  const wyswietlaneKoncerty = widok === 'nadchodzace' ? nadchodzaceKoncerty : odbyteKoncerty;
 
   return (
     <div style={{ marginTop: '20px', padding: '25px', border: '1px solid #e2e8f0', borderRadius: '12px', backgroundColor: '#ffffff', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
@@ -251,13 +276,27 @@ export default function Koncerty({ profile }) {
         </div>
       )}
 
-      <h3 style={{ fontSize: '16px', color: '#334155', marginBottom: '15px' }}>Nadchodzące koncerty ({koncerty.length})</h3>
+      {/* Przełącznik zakładek */}
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px', flexWrap: 'wrap' }}>
+        <button 
+          onClick={() => setWidok('nadchodzace')} 
+          style={{ padding: '8px 16px', backgroundColor: widok === 'nadchodzace' ? '#8b5cf6' : '#f8fafc', color: widok === 'nadchodzace' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px' }}
+        >
+          Nadchodzące ({nadchodzaceKoncerty.length})
+        </button>
+        <button 
+          onClick={() => setWidok('odbyte')} 
+          style={{ padding: '8px 16px', backgroundColor: widok === 'odbyte' ? '#8b5cf6' : '#f8fafc', color: widok === 'odbyte' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px' }}
+        >
+          Odbyte koncerty ({odbyteKoncerty.length})
+        </button>
+      </div>
       
-      {koncerty.length === 0 ? (
-        <p style={{ color: '#718096' }}>Brak zaplanowanych koncertów.</p>
+      {wyswietlaneKoncerty.length === 0 ? (
+        <p style={{ color: '#718096' }}>Brak koncertów w tej zakładce.</p>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          {koncerty.map(koncert => {
+          {wyswietlaneKoncerty.map(koncert => {
             const deklaracjaUzytkownika = deklaracjeKoncertow[koncert.id];
             const zapisani = zapisaniNaKoncert[koncert.id] || [];
             const isRozwiniete = rozwinieteSklady[koncert.id];
@@ -272,7 +311,7 @@ export default function Koncerty({ profile }) {
             const zakwalifikowaniWszyscy = chetni.filter(z => z.zakwalifikowany === true);
 
             return (
-              <div key={koncert.id} style={{ borderLeft: '6px solid #8b5cf6', padding: '20px', backgroundColor: '#faf5ff', borderRadius: '8px', borderTop: '1px solid #e9d5ff', borderRight: '1px solid #e9d5ff', borderBottom: '1px solid #e9d5ff', boxShadow: '0 2px 4px rgba(0,0,0,0.01)' }}>
+              <div key={koncert.id} style={{ borderLeft: widok === 'nadchodzace' ? '6px solid #8b5cf6' : '6px solid #94a3b8', padding: '20px', backgroundColor: widok === 'nadchodzace' ? '#faf5ff' : '#f8fafc', borderRadius: '8px', borderTop: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', boxShadow: '0 2px 4px rgba(0,0,0,0.01)' }}>
                 {isKierownik && czyEdytowany ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', backgroundColor: '#fff', padding: '15px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
                     <h4 style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#1e293b' }}>Edycja koncertu:</h4>
@@ -292,13 +331,12 @@ export default function Koncerty({ profile }) {
                   <>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
                       <div>
-                        <h4 style={{ margin: '0 0 5px 0', color: '#1e293b', fontSize: '18px' }}>{koncert.tytul}</h4>
+                        <h4 style={{ margin: '0 0 5px 0', color: widok === 'odbyte' ? '#64748b' : '#1e293b', fontSize: '18px' }}>{koncert.tytul}</h4>
                         <p style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#475569' }}>
                           📅 <strong>{formatujDate(koncert.data_czas)}</strong> | 📍 {koncert.miejsce}
                         </p>
                       </div>
 
-                      {/* Przyciski po prawej: Walizki (dla wszystkich) oraz Edytuj/Usuń (dla kierownika) */}
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
                         <button
                           onClick={() => setWybranyKoncertWalizki(koncert)}
@@ -329,7 +367,7 @@ export default function Koncerty({ profile }) {
                     </div>
                     <p style={{ margin: '10px 0', fontSize: '14px', color: '#334155' }}><strong>Opis:</strong> {koncert.program}</p>
 
-                    {profile.rola === 'członek' && (
+                    {profile.rola === 'członek' && widok === 'nadchodzace' && (
                       <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
                           <span style={{ fontSize: '14px', fontWeight: '600', color: '#1e293b' }}>Twoja deklaracja (Sekcja: <strong style={{ textTransform: 'uppercase' }}>{profile.sekcja}</strong>):</span>
@@ -349,7 +387,7 @@ export default function Koncerty({ profile }) {
                         <div style={{ marginTop: '12px', padding: '15px', backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
                           <div style={{ display: 'flex', gap: '10px', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px', marginBottom: '15px' }}>
                             <button onClick={() => ustawPodzakladke(koncert.id, 'sklad')} style={{ padding: '6px 14px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', backgroundColor: podzakladka === 'sklad' ? '#8b5cf6' : '#f1f5f9', color: podzakladka === 'sklad' ? '#fff' : '#475569' }}>👥 Skład i kwalifikacje</button>
-                            <button onClick={() => ustawPodzakladke(koncert.id, 'program')} style={{ padding: '6px 14px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', backgroundColor: podzakladka === 'program' ? '#8b5cf6' : '#f1f5f9', color: podzakladka === 'program' ? '#fff' : '#475569' }}>📋 Program i obsada układów</button>
+                            <button onClick={() => ustawPodzakladke(koncert.id, 'program')} style={{ padding: '6px 14px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', backgroundColor: podzakladka === 'program' ? '#8b5cf6' : '#f1f5f9', color: podzakladka === 'program' ? '#fff' : '#475569' }}>📋 Program i obsada</button>
                           </div>
                           {podzakladka === 'sklad' && (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
@@ -370,8 +408,19 @@ export default function Koncerty({ profile }) {
                             <div>
                               <h5 style={{ margin: '0 0 10px 0', fontSize: '15px', color: '#1e293b' }}>Program i występy w układach:</h5>
                               {canManageProgram && (
-                                <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', backgroundColor: '#f8fafc', padding: '10px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                                  <input type="text" placeholder="Wpisz układ (np. Tańce rzeszowskie)" value={noweUklady[koncert.id] || ''} onChange={(e) => setNoweUklady({ ...noweUklady, [koncert.id]: e.target.value })} style={{ flex: 1, padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box' }} />
+                                <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', backgroundColor: '#f8fafc', padding: '10px', borderRadius: '6px', border: '1px solid #e2e8f0', flexWrap: 'wrap' }}>
+                                  <select 
+                                    value={nowyTypUkladu[koncert.id] || 'baletowy'} 
+                                    onChange={(e) => setNowyTypUkladu({ ...nowyTypUkladu, [koncert.id]: e.target.value })}
+                                    style={{ padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '13px', backgroundColor: '#fff', color: '#000' }}
+                                  >
+                                    <option value="baletowy">🩰 Baletowy</option>
+                                    <option value="chóralny">🎤 Chóralny</option>
+                                    <option value="kapeli">🎻 Kapeli</option>
+                                    <option value="ogólny">🎭 Ogólny / Mieszany</option>
+                                  </select>
+                                  
+                                  <input type="text" placeholder="Wpisz układ (np. Tańce rzeszowskie)" value={noweUklady[koncert.id] || ''} onChange={(e) => setNoweUklady({ ...noweUklady, [koncert.id]: e.target.value })} style={{ flex: 1, padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box', minWidth: '150px' }} />
                                   <button onClick={() => dodajPunktProgramu(koncert.id)} style={{ padding: '8px 14px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}>Dodaj układ ➕</button>
                                 </div>
                               )}
@@ -381,18 +430,25 @@ export default function Koncerty({ profile }) {
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
                                   {programyDlaKoncertu.map((prog, index) => {
                                     const obsadaIds = obsadyProgramow[prog.id] || [];
+                                    // Zbieramy do selecta wszystkich zakwalifikowanych bez żadnego sprawdzania sekcji
                                     const osobyWpisu = zakwalifikowaniWszyscy.filter(z => obsadaIds.includes(z.id_uzytkownika));
                                     const wolniDoObsadzenia = zakwalifikowaniWszyscy.filter(z => !obsadaIds.includes(z.id_uzytkownika));
+                                    
+                                    // Ikonka dla punktu programu
+                                    const typIcon = prog.typ_ukladu === 'chóralny' ? '🎤' : prog.typ_ukladu === 'kapeli' ? '🎻' : prog.typ_ukladu === 'ogólny' ? '🎭' : '🩰';
+
                                     return (
                                       <div key={prog.id} style={{ padding: '12px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                                          <h6 style={{ margin: 0, fontSize: '14px', color: '#1e293b', fontWeight: 'bold' }}>{index + 1}. {prog.tytul_ukladu}</h6>
+                                          <h6 style={{ margin: 0, fontSize: '14px', color: '#1e293b', fontWeight: 'bold' }}>
+                                            {index + 1}. {typIcon} {prog.tytul_ukladu}
+                                          </h6>
                                           {canManageProgram && (
                                             <button onClick={() => usunPunktProgramu(prog.id)} style={{ padding: '2px 6px', backgroundColor: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: '4px', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold' }}>Usuń układ ❌</button>
                                           )}
                                         </div>
                                         
-                                        <p style={{ fontSize: '13px', color: '#475569', margin: '4px 0 10px 0' }}><strong>Obsada:</strong></p>
+                                        <p style={{ fontSize: '13px', color: '#475569', margin: '4px 0 10px 0' }}><strong>Obsada ({osobyWpisu.length}):</strong></p>
                                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
                                           {osobyWpisu.length === 0 ? <span style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '13px' }}>Brak osób w obsadzie</span> : osobyWpisu.map(o => (
                                             <span key={o.id_uzytkownika} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '4px 10px', backgroundColor: '#fff', borderRadius: '20px', fontSize: '13px', color: '#334155', border: '1px solid #e2e8f0' }}>
