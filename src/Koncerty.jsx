@@ -114,7 +114,8 @@ export default function Koncerty({ profile }) {
       const { data: dekData, error: dekErr } = await supabase.from('deklaracje_koncerty').select('id, id_koncertu, id_uzytkownika, planuje, zakwalifikowany').in('id_koncertu', koncertIds);
       if (dekErr) throw dekErr;
       
-      const { data: profData, error: profErr } = await supabase.from('profiles').select('id, imie_nazwisko, sekcja, glos, avatar_url').eq('status', 'zatwierdzony');
+      // Pobieramy profile bez restrykcji statusu, żeby każdy zgłoszony członek był widoczny dla kadry
+      const { data: profData, error: profErr } = await supabase.from('profiles').select('id, imie_nazwisko, sekcja, glos, avatar_url');
       if (profErr) throw profErr;
 
       if (dekData && profData) {
@@ -229,8 +230,12 @@ export default function Koncerty({ profile }) {
 
   const zaktualizujDeklaracjeKoncertu = async (koncertId, statusPlanuje) => {
     const { error } = await supabase.from('deklaracje_koncerty').upsert([{ id_koncertu: koncertId, id_uzytkownika: profile.id, planuje: statusPlanuje }], { onConflict: 'id_koncertu, id_uzytkownika' });
-    if (!error) { setDeklaracjeKoncertow(prev => ({ ...prev, [koncertId]: statusPlanuje })); pobierzKoncerty(); }
-    else alert('Błąd: ' + error.message);
+    if (!error) { 
+      setDeklaracjeKoncertow(prev => ({ ...prev, [koncertId]: statusPlanuje })); 
+      pobierzKoncerty(); 
+    } else {
+      alert('Błąd zapisywania deklaracji: ' + error.message);
+    }
   };
 
   const zmienKwalifikacje = async (koncertId, userId, statusZakwalifikowany) => {
@@ -331,12 +336,10 @@ export default function Koncerty({ profile }) {
   const eksportujDoExcela = (koncert, wszyscyZgloszeni, programyTegoKoncertu, bKwal, cKwal, kKwal) => {
     const chetni = wszyscyZgloszeni.filter(z => z.planuje === true);
     
-    // Grupowanie układów według sekcji
     const baletPrograms = programyTegoKoncertu.filter(p => ['baletowy', 'ogólny'].includes(p.typ_ukladu));
     const chorPrograms = programyTegoKoncertu.filter(p => ['chóralny', 'ogólny'].includes(p.typ_ukladu));
     const kapelaPrograms = programyTegoKoncertu.filter(p => ['kapeli', 'ogólny'].includes(p.typ_ukladu));
 
-    // ================== ARKUSZ 1: ZGŁOSZENI ==================
     const daneArkusz1 = [
       ['RAPORT ZGŁOSZEŃ', `Koncert: ${koncert.tytul}`, `Data: ${formatujDate(koncert.data_czas)}`],
       [],
@@ -352,7 +355,6 @@ export default function Koncerty({ profile }) {
       ]);
     });
 
-    // ================== ARKUSZ 2: MACIERZ ZAKWALIFIKOWANYCH ==================
     const daneArkusz2 = [];
 
     const generujSekcjeDoExcela = (nazwaSekcji, grupy, osoby, programy) => {
@@ -370,7 +372,6 @@ export default function Koncerty({ profile }) {
         isFirstGrupaInSekcja = false;
 
         osobyWGrupie.forEach(o => {
-          // Dla gości wstawiamy adnotację z ich prawdziwą sekcją do Excela
           const imieZNazwiskiem = o.isGosc ? `${o.imie_nazwisko} (${o.prawdziwaSekcja})` : o.imie_nazwisko;
           const wierszOsoby = ['', '', imieZNazwiskiem];
           
@@ -396,7 +397,7 @@ export default function Koncerty({ profile }) {
     ws1['!cols'] = [{wch: 12}, {wch: 15}, {wch: 25}, {wch: 20}];
     
     const maxProg = Math.max(baletPrograms.length, chorPrograms.length, kapelaPrograms.length);
-    const colsA2 = [{wch: 12}, {wch: 15}, {wch: 30}]; // Zwiększona szerokość nazwiska
+    const colsA2 = [{wch: 12}, {wch: 15}, {wch: 30}]; 
     for(let i=0; i<maxProg; i++) colsA2.push({wch: 15});
     ws2['!cols'] = colsA2;
 
@@ -414,8 +415,6 @@ export default function Koncerty({ profile }) {
     if (osoby.length === 0 && programy.length === 0) return null;
 
     let isFirstGroupGlobal = true;
-
-    // Filtrujemy dropdowna żeby nie można było dodać osoby, która już tam jest
     const wolniDoDodania = wszyscyZakwalifikowani.filter(z => !osoby.some(o => o.id_uzytkownika === z.id_uzytkownika));
     
     const dropdownOpcje = nazwaSekcji === 'Balet' 
@@ -609,7 +608,6 @@ export default function Koncerty({ profile }) {
             const chetni = zapisani.filter(z => z.planuje === true);
             const zakwalifikowaniWszyscy = chetni.filter(z => z.zakwalifikowany === true);
             
-            // Mapowanie Gości
             const goscieTegoKoncertu = goscieMacierzy[koncert.id] || [];
             const mapujGosci = (macierz) => {
               return goscieTegoKoncertu.filter(g => g.docelowa_macierz === macierz).map(g => {
@@ -630,7 +628,6 @@ export default function Koncerty({ profile }) {
             const bazowyChor = zakwalifikowaniWszyscy.filter(z => z.sekcja === 'chór');
             const bazowaKapela = zakwalifikowaniWszyscy.filter(z => z.sekcja === 'kapela');
 
-            // Listy do macierzy (bazowi + "goście")
             const baletKwalifikowani = sortujOsoby([...bazowyBalet, ...mapujGosci('Balet')]);
             const chorKwalifikowani = sortujOsoby([...bazowyChor, ...mapujGosci('Chór')]);
             const kapelaKwalifikowani = sortujOsoby([...bazowaKapela, ...mapujGosci('Kapela')]);
