@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import { supabase } from './supabaseClient';
 import WalizkiModal from './WalizkiModal';
 import * as XLSX from 'xlsx';
@@ -49,7 +49,6 @@ export default function Koncerty({ profile }) {
   const [noweUklady, setNoweUklady] = useState({});
   const [nowyTypUkladu, setNowyTypUkladu] = useState({});
 
-  // STANY DLA EDYCJI PUNKTÓW PROGRAMU
   const [edycjaProgramuId, setEdycjaProgramuId] = useState(null);
   const [editTytulUkladu, setEditTytulUkladu] = useState('');
   const [editTypUkladu, setEditTypUkladu] = useState('');
@@ -73,6 +72,7 @@ export default function Koncerty({ profile }) {
 
   useEffect(() => {
     if (profile) pobierzKoncerty();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile]);
 
   const pobierzKoncerty = async () => {
@@ -111,21 +111,43 @@ export default function Koncerty({ profile }) {
       const koncertIds = listaKoncertow.map(k => k.id);
       if (koncertIds.length === 0) return;
 
-      const { data: dekData, error: dekErr } = await supabase.from('deklaracje_koncerty').select('id, id_koncertu, id_uzytkownika, planuje, zakwalifikowany').in('id_koncertu', koncertIds);
-      if (dekErr) throw dekErr;
-      
-      // Pobieramy profile bez restrykcji statusu, żeby każdy zgłoszony członek był widoczny dla kadry
-      const { data: profData, error: profErr } = await supabase.from('profiles').select('id, imie_nazwisko, sekcja, glos, avatar_url');
-      if (profErr) throw profErr;
+      const { data: dekData, error: dekErr } = await supabase
+        .from('deklaracje_koncerty')
+        .select(`
+          id,
+          id_koncertu,
+          id_uzytkownika,
+          planuje,
+          zakwalifikowany,
+          profiles (
+            id,
+            imie_nazwisko,
+            sekcja,
+            glos,
+            avatar_url
+          )
+        `)
+        .in('id_koncertu', koncertIds);
 
-      if (dekData && profData) {
-        const profileMap = {}; 
-        profData.forEach(p => { profileMap[p.id] = p; });
+      if (dekErr) throw dekErr;
+
+      if (dekData) {
         const mapaZapisanych = {}; 
         koncertIds.forEach(id => { mapaZapisanych[id] = []; });
+        
         dekData.forEach(d => {
-          if (profileMap[d.id_uzytkownika]) {
-            mapaZapisanych[d.id_koncertu].push({ id: d.id, id_uzytkownika: d.id_uzytkownika, planuje: d.planuje, zakwalifikowany: d.zakwalifikowany, ...profileMap[d.id_uzytkownika] });
+          const prof = Array.isArray(d.profiles) ? d.profiles[0] : d.profiles;
+          if (prof) {
+            mapaZapisanych[d.id_koncertu].push({
+              id: d.id,
+              id_uzytkownika: d.id_uzytkownika,
+              planuje: d.planuje,
+              zakwalifikowany: d.zakwalifikowany,
+              imie_nazwisko: prof.imie_nazwisko,
+              sekcja: prof.sekcja,
+              glos: prof.glos,
+              avatar_url: prof.avatar_url
+            });
           }
         });
         setZapisaniNaKoncert(mapaZapisanych);
@@ -219,7 +241,9 @@ export default function Koncerty({ profile }) {
     setEditProgramOpis(koncert.program || '');
     setEdycjaKoncertId(koncert.id);
   };
+
   const anulujEdycje = () => setEdycjaKoncertId(null);
+  
   const zapiszEdycje = async (koncertId) => {
     if (!editDataKoncertu || !editGodzinaKoncertu) return;
     const pelnaDataCzas = `${editDataKoncertu}T${editGodzinaKoncertu}:00`;
@@ -452,7 +476,7 @@ export default function Koncerty({ profile }) {
                 isFirstGroupGlobal = false;
 
                 return (
-                  <ReactFragmentHelper key={grupa || 'brak'}>
+                  <Fragment key={grupa || 'brak'}>
                     <tr style={{ backgroundColor: '#f8fafc', fontWeight: 'bold' }}>
                       <td style={{ padding: '8px 10px', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', color: '#0f172a' }}>{nazwaSekcjiDoWyswietlenia}</td>
                       <td style={{ padding: '8px 10px', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', color: '#d97706' }}>{grupa || 'Ogólne'}</td>
@@ -491,7 +515,7 @@ export default function Koncerty({ profile }) {
                         })}
                       </tr>
                     ))}
-                  </ReactFragmentHelper>
+                  </Fragment>
                 );
               })}
             </tbody>
@@ -843,10 +867,6 @@ export default function Koncerty({ profile }) {
       )}
     </div>
   );
-}
-
-function ReactFragmentHelper({ children }) {
-  return <>{children}</>;
 }
 
 function renderujListeOsobek(tytulSekcji, listaOsob, koncertId, profile, naZmienKwalifikacje, isPodgrupa = false) {
