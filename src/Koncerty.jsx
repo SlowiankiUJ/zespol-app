@@ -83,9 +83,9 @@ export default function Koncerty({ profile }) {
       if (data) {
         setKoncerty(data);
         if (profile.rola === 'członek') pobierzMojeDeklaracjeKoncertow();
-        pobierzWszystkichZapisanych(data);
-        pobierzProgramy(data);
-        pobierzGosciMacierzy(data);
+        await pobierzWszystkichZapisanych(data);
+        await pobierzProgramy(data);
+        await pobierzGosciMacierzy(data);
       }
     } catch (err) {
       console.error('Błąd pobierania koncertów:', err);
@@ -106,13 +106,11 @@ export default function Koncerty({ profile }) {
     }
   };
 
-  // Niezależne, bezpieczne pobieranie danych (bez polegania na relacjach w bazie)
   const pobierzWszystkichZapisanych = async (listaKoncertow) => {
     try {
       const koncertIds = listaKoncertow.map(k => k.id);
       if (koncertIds.length === 0) return;
 
-      // 1. Pobieramy surowe deklaracje
       const { data: dekData, error: dekErr } = await supabase
         .from('deklaracje_koncerty')
         .select('*')
@@ -120,7 +118,6 @@ export default function Koncerty({ profile }) {
 
       if (dekErr) throw dekErr;
 
-      // 2. Pobieramy wszystkie profile
       const { data: profData, error: profErr } = await supabase
         .from('profiles')
         .select('id, imie_nazwisko, sekcja, glos, avatar_url');
@@ -128,11 +125,8 @@ export default function Koncerty({ profile }) {
       if (profErr) throw profErr;
 
       if (dekData && profData) {
-        // Tworzymy mapę profili dla szybkiego wyszukiwania po ID
         const profileMap = {};
-        profData.forEach(p => {
-          profileMap[p.id] = p;
-        });
+        profData.forEach(p => { profileMap[p.id] = p; });
 
         const mapaZapisanych = {}; 
         koncertIds.forEach(id => { mapaZapisanych[id] = []; });
@@ -356,9 +350,6 @@ export default function Koncerty({ profile }) {
   const przelaczRozwiniecieSkladu = (koncertId) => { setRozwinieteSklady(prev => ({ ...prev, [koncertId]: !prev[koncertId] })); };
   const ustawPodzakladke = (koncertId, tab) => { setAktywnaPodzakladka(prev => ({ ...prev, [koncertId]: tab })); };
 
-  // ----------------------------------------------------
-  // GENERATOR PLIKÓW EXCEL (.XLSX)
-  // ----------------------------------------------------
   const eksportujDoExcela = (koncert, wszyscyZgloszeni, programyTegoKoncertu, bKwal, cKwal, kKwal) => {
     const chetni = wszyscyZgloszeni.filter(z => z.planuje === true);
     
@@ -434,9 +425,6 @@ export default function Koncerty({ profile }) {
     XLSX.writeFile(wb, `Koncert_${czystyTytul}.xlsx`);
   };
 
-  // ----------------------------------------------------
-  // RENDERER UI Z PODZIAŁEM W STYLU EXCELA I OCHOTNIKAMI
-  // ----------------------------------------------------
   const renderMacierzUI = (koncertId, nazwaSekcji, ikonaSekcji, grupy, osoby, programy, wszyscyZakwalifikowani) => {
     if (osoby.length === 0 && programy.length === 0) return null;
 
@@ -632,31 +620,12 @@ export default function Koncerty({ profile }) {
             const czyEdytowany = edycjaKoncertId === koncert.id;
 
             const chetni = zapisani.filter(z => z.planuje === true);
-            const zakwalifikowaniWszyscy = chetni.filter(z => z.zakwalifikowany === true);
             
-            const goscieTegoKoncertu = goscieMacierzy[koncert.id] || [];
-            const mapujGosci = (macierz) => {
-              return goscieTegoKoncertu.filter(g => g.docelowa_macierz === macierz).map(g => {
-                const org = zakwalifikowaniWszyscy.find(z => z.id_uzytkownika === g.id_uzytkownika);
-                if (!org) return null;
-                return {
-                  ...org,
-                  prawdziwaSekcja: org.sekcja,
-                  sekcja: org.sekcja, 
-                  glos: g.docelowa_grupa,
-                  isGosc: true,
-                  id_goscia: g.id
-                };
-              }).filter(Boolean);
-            };
-
-            const bazowyBalet = zakwalifikowaniWszyscy.filter(z => z.sekcja === 'balet');
-            const bazowyChor = zakwalifikowaniWszyscy.filter(z => z.sekcja === 'chór');
-            const bazowaKapela = zakwalifikowaniWszyscy.filter(z => z.sekcja === 'kapela');
-
-            const baletKwalifikowani = sortujOsoby([...bazowyBalet, ...mapujGosci('Balet')]);
-            const chorKwalifikowani = sortujOsoby([...bazowyChor, ...mapujGosci('Chór')]);
-            const kapelaKwalifikowani = sortujOsoby([...bazowaKapela, ...mapujGosci('Kapela')]);
+            // BEZWZGLĘDNE WYŚWIETLANIE WSZYSTKICH CHĘTNYCH (BEZ FILTROWANIA KWALIFIKACJI)
+            const baletKwalifikowani = sortujOsoby(chetni.filter(z => (z.sekcja || '').toLowerCase() === 'balet'));
+            const chorKwalifikowani = sortujOsoby(chetni.filter(z => (z.sekcja || '').toLowerCase() === 'chór'));
+            const kapelaKwalifikowani = sortujOsoby(chetni.filter(z => (z.sekcja || '').toLowerCase() === 'kapela'));
+            const pozostaliZgloszeni = sortujOsoby(chetni.filter(z => !['balet', 'chór', 'kapela'].includes((z.sekcja || '').toLowerCase())));
 
             const baletPrograms = programyDlaKoncertu.filter(p => ['baletowy', 'ogólny'].includes(p.typ_ukladu));
             const chorPrograms = programyDlaKoncertu.filter(p => ['chóralny', 'ogólny'].includes(p.typ_ukladu));
@@ -715,12 +684,12 @@ export default function Koncerty({ profile }) {
 
                     <div style={{ marginTop: '15px' }}>
                       <button onClick={() => przelaczRozwiniecieSkladu(koncert.id)} style={{ padding: '8px 14px', backgroundColor: '#e2e8f0', color: '#334155', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '13px' }}>
-                        {isRozwiniete ? 'Zwiń szczegóły koncertu ▲' : `Szczegóły koncertu (Skład i Program) ▼`}
+                        {isRozwiniete ? 'Zwiń szczegóły koncertu ▲' : `Szczegóły koncertu (Chętnych: ${chetni.length}) ▼`}
                       </button>
                       {isRozwiniete && (
                         <div style={{ marginTop: '12px', padding: '15px', backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #cbd5e1', overflowX: 'auto' }}>
                           <div style={{ display: 'flex', gap: '10px', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px', marginBottom: '15px', flexWrap: 'wrap' }}>
-                            <button onClick={() => ustawPodzakladke(koncert.id, 'sklad')} style={{ padding: '6px 14px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', backgroundColor: podzakladka === 'sklad' ? '#8b5cf6' : '#f1f5f9', color: podzakladka === 'sklad' ? '#fff' : '#475569' }}>👥 Skład i kwalifikacje</button>
+                            <button onClick={() => ustawPodzakladke(koncert.id, 'sklad')} style={{ padding: '6px 14px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', backgroundColor: podzakladka === 'sklad' ? '#8b5cf6' : '#f1f5f9', color: podzakladka === 'sklad' ? '#fff' : '#475569' }}>👥 Skład i zgłoszenia ({chetni.length})</button>
                             <button onClick={() => ustawPodzakladke(koncert.id, 'program')} style={{ padding: '6px 14px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', backgroundColor: podzakladka === 'program' ? '#8b5cf6' : '#f1f5f9', color: podzakladka === 'program' ? '#fff' : '#475569' }}>📋 Dodawanie programu</button>
                             <button onClick={() => ustawPodzakladke(koncert.id, 'macierz')} style={{ padding: '6px 14px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', backgroundColor: podzakladka === 'macierz' ? '#8b5cf6' : '#f1f5f9', color: podzakladka === 'macierz' ? '#fff' : '#475569' }}>📊 Macierz Obsady (Excel)</button>
                           </div>
@@ -728,35 +697,67 @@ export default function Koncerty({ profile }) {
                           {podzakladka === 'sklad' && (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
                               <div>
-                                <h5 style={{ margin: '0 0 8px 0', fontSize: '15px', color: '#1e293b', borderBottom: '2px solid #8b5cf6', paddingBottom: '4px' }}>🩰 Balet (Ogółem: {bazowyBalet.length} zgłoszonych)</h5>
-                                {['Pani', 'Pan'].map(grupaName => {
-                                  const osobyGrupy = bazowyBalet.filter(o => o.glos === grupaName);
-                                  if (osobyGrupy.length === 0) return null;
-                                  return (
-                                    <div key={grupaName} style={{ marginTop: '10px', paddingLeft: '10px' }}>
-                                      {renderujListeOsobek(`• ${grupaName === 'Pani' ? 'Panie' : 'Panowie'} (${grupaName})`, osobyGrupy, koncert.id, profile, zmienKwalifikacje, true)}
-                                    </div>
-                                  );
-                                })}
-                                {bazowyBalet.some(o => !o.glos) && (
-                                  <div style={{ marginTop: '10px', paddingLeft: '10px' }}>
-                                    {renderujListeOsobek('• Bez przypisania', bazowyBalet.filter(o => !o.glos), koncert.id, profile, zmienKwalifikacje, true)}
-                                  </div>
+                                <h5 style={{ margin: '0 0 8px 0', fontSize: '15px', color: '#1e293b', borderBottom: '2px solid #8b5cf6', paddingBottom: '4px' }}>🩰 Balet ({baletKwalifikowani.length})</h5>
+                                {baletKwalifikowani.length === 0 ? <p style={{ fontSize: '12px', color: '#94a3b8' }}>Brak zgłoszeń w balecie</p> : (
+                                  <ul style={{ margin: '5px 0 0 15px', paddingLeft: '10px', fontSize: '13px', color: '#334155' }}>
+                                    {baletKwalifikowani.map(osoba => (
+                                      <li key={osoba.id_uzytkownika} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', padding: '4px 8px', backgroundColor: '#f0fdf4', borderRadius: '4px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                          <RenderAvatar url={osoba.avatar_url} />
+                                          <span>{osoba.imie_nazwisko} ({osoba.glos || 'brak grupy'})</span>
+                                        </div>
+                                        {isKierownik && (
+                                          <button onClick={() => zmienKwalifikacje(koncert.id, osoba.id_uzytkownika, !osoba.zakwalifikowany)} style={{ padding: '2px 6px', backgroundColor: osoba.zakwalifikowany ? '#10b981' : '#fef3c7', color: osoba.zakwalifikowany ? '#fff' : '#92400e', border: 'none', borderRadius: '4px', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold' }}>
+                                            {osoba.zakwalifikowany ? 'Zakwalifikowany ✔️' : 'Rezerwa ⏳'}
+                                          </button>
+                                        )}
+                                      </li>
+                                    ))}
+                                  </ul>
                                 )}
-                                {bazowyBalet.length === 0 && <p style={{ fontSize: '13px', color: '#94a3b8', margin: '0' }}>Brak zgłoszeń w balecie</p>}
                               </div>
 
                               <div>
-                                <h5 style={{ margin: '0 0 8px 0', fontSize: '15px', color: '#1e293b', borderBottom: '2px solid #d69e2e', paddingBottom: '4px' }}>🎤 Chór (Ogółem: {bazowyChor.length} zgłoszonych)</h5>
-                                {['Sopran', 'Alt', 'Tenor', 'Bas'].map(glosName => {
-                                  const osobyGlosu = bazowyChor.filter(o => (o.glos || 'Sopran') === glosName);
-                                  if (osobyGlosu.length === 0) return null;
-                                  return <div key={glosName} style={{ marginTop: '10px', paddingLeft: '10px' }}>{renderujListeOsobek(`• ${glosName}`, osobyGlosu, koncert.id, profile, zmienKwalifikacje, true)}</div>;
-                                })}
-                                {bazowyChor.length === 0 && <p style={{ fontSize: '13px', color: '#94a3b8', margin: '0' }}>Brak zgłoszeń w chórze</p>}
+                                <h5 style={{ margin: '0 0 8px 0', fontSize: '15px', color: '#1e293b', borderBottom: '2px solid #d69e2e', paddingBottom: '4px' }}>🎤 Chór ({chorKwalifikowani.length})</h5>
+                                {chorKwalifikowani.length === 0 ? <p style={{ fontSize: '12px', color: '#94a3b8' }}>Brak zgłoszeń w chórze</p> : (
+                                  <ul style={{ margin: '5px 0 0 15px', paddingLeft: '10px', fontSize: '13px', color: '#334155' }}>
+                                    {chorKwalifikowani.map(osoba => (
+                                      <li key={osoba.id_uzytkownika} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', padding: '4px 8px', backgroundColor: '#fffbeb', borderRadius: '4px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                          <RenderAvatar url={osoba.avatar_url} />
+                                          <span>{osoba.imie_nazwisko} ({osoba.glos || 'brak głosu'})</span>
+                                        </div>
+                                        {isKierownik && (
+                                          <button onClick={() => zmienKwalifikacje(koncert.id, osoba.id_uzytkownika, !osoba.zakwalifikowany)} style={{ padding: '2px 6px', backgroundColor: osoba.zakwalifikowany ? '#10b981' : '#fef3c7', color: osoba.zakwalifikowany ? '#fff' : '#92400e', border: 'none', borderRadius: '4px', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold' }}>
+                                            {osoba.zakwalifikowany ? 'Zakwalifikowany ✔️' : 'Rezerwa ⏳'}
+                                          </button>
+                                        )}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
                               </div>
 
-                              {renderujListeOsobek('🎻 Kapela', bazowaKapela, koncert.id, profile, zmienKwalifikacje)}
+                              <div>
+                                <h5 style={{ margin: '0 0 8px 0', fontSize: '15px', color: '#1e293b', borderBottom: '2px solid #3182ce', paddingBottom: '4px' }}>🎻 Kapela ({kapelaKwalifikowani.length})</h5>
+                                {kapelaKwalifikowani.length === 0 ? <p style={{ fontSize: '12px', color: '#94a3b8' }}>Brak zgłoszeń w kapeli</p> : (
+                                  <ul style={{ margin: '5px 0 0 15px', paddingLeft: '10px', fontSize: '13px', color: '#334155' }}>
+                                    {kapelaKwalifikowani.map(osoba => (
+                                      <li key={osoba.id_uzytkownika} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', padding: '4px 8px', backgroundColor: '#eff6ff', borderRadius: '4px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                          <RenderAvatar url={osoba.avatar_url} />
+                                          <span>{osoba.imie_nazwisko}</span>
+                                        </div>
+                                        {isKierownik && (
+                                          <button onClick={() => zmienKwalifikacje(koncert.id, osoba.id_uzytkownika, !osoba.zakwalifikowany)} style={{ padding: '2px 6px', backgroundColor: osoba.zakwalifikowany ? '#10b981' : '#fef3c7', color: osoba.zakwalifikowany ? '#fff' : '#92400e', border: 'none', borderRadius: '4px', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold' }}>
+                                            {osoba.zakwalifikowany ? 'Zakwalifikowany ✔️' : 'Rezerwa ⏳'}
+                                          </button>
+                                        )}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
+                              </div>
                             </div>
                           )}
                           
@@ -842,13 +843,13 @@ export default function Koncerty({ profile }) {
 
                               {programyDlaKoncertu.length === 0 ? (
                                 <p style={{ fontSize: '13px', color: '#718096' }}>Dodaj najpierw programy w zakładce "Program", aby wygenerować macierz.</p>
-                              ) : zakwalifikowaniWszyscy.length === 0 ? (
-                                <p style={{ fontSize: '13px', color: '#718096' }}>Nie ma jeszcze żadnych zakwalifikowanych członków. Zakwalifikuj ich w zakładce Skład.</p>
+                              ) : chetni.length === 0 ? (
+                                <p style={{ fontSize: '13px', color: '#718096' }}>Brak zgłoszeń na ten koncert.</p>
                               ) : (
                                 <>
-                                  {renderMacierzUI(koncert.id, 'Balet', '🩰', ['Pani', 'Pan', ''], baletKwalifikowani, baletPrograms, zakwalifikowaniWszyscy)}
-                                  {renderMacierzUI(koncert.id, 'Chór', '🎤', ['Sopran', 'Alt', 'Tenor', 'Bas', ''], chorKwalifikowani, chorPrograms, zakwalifikowaniWszyscy)}
-                                  {renderMacierzUI(koncert.id, 'Kapela', '🎻', [''], kapelaKwalifikowani, kapelaPrograms, zakwalifikowaniWszyscy)}
+                                  {renderMacierzUI(koncert.id, 'Balet', '🩰', ['Pani', 'Pan', ''], baletKwalifikowani, baletPrograms, chetni)}
+                                  {renderMacierzUI(koncert.id, 'Chór', '🎤', ['Sopran', 'Alt', 'Tenor', 'Bas', ''], chorKwalifikowani, chorPrograms, chetni)}
+                                  {renderMacierzUI(koncert.id, 'Kapela', '🎻', [''], kapelaKwalifikowani, kapelaPrograms, chetni)}
                                 </>
                               )}
                             </div>
@@ -866,62 +867,6 @@ export default function Koncerty({ profile }) {
 
       {wybranyKoncertWalizki && (
         <WalizkiModal koncert={wybranyKoncertWalizki} profile={profile} onClose={() => setWybranyKoncertWalizki(null)} />
-      )}
-    </div>
-  );
-}
-
-function renderujListeOsobek(tytulSekcji, listaOsob, koncertId, profile, naZmienKwalifikacje, isPodgrupa = false) {
-  const zakwalifikowani = listaOsob.filter(o => o.zakwalifikowany === true);
-  const rezerwa = listaOsob.filter(o => o.zakwalifikowany === false || o.zakwalifikowany === null);
-  const isKierownik = profile.rola === 'kierownik';
-
-  return (
-    <div>
-      <h5 style={{ margin: isPodgrupa ? '4px 0 4px 0' : '0 0 8px 0', fontSize: isPodgrupa ? '13px' : '14px', color: isPodgrupa ? '#d97706' : '#1e293b', borderBottom: isPodgrupa ? 'none' : '2px solid #cbd5e1', paddingBottom: '4px', textTransform: isPodgrupa ? 'uppercase' : 'none' }}>
-        {tytulSekcji} ({listaOsob.length})
-      </h5>
-      {listaOsob.length === 0 ? (
-        <p style={{ fontSize: '12px', color: '#94a3b8', margin: '0 0 5px 0' }}>Brak zgłoszeń</p>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' }}>
-          {zakwalifikowani.length > 0 && (
-            <div>
-              <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#10b981' }}>🟢 Zakwalifikowani ({zakwalifikowani.length}):</span>
-              <ul style={{ margin: '2px 0 6px 15px', paddingLeft: '10px', fontSize: '13px', color: '#334155' }}>
-                {zakwalifikowani.map(osoba => (
-                  <li key={osoba.id_uzytkownika} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', padding: '4px 8px', backgroundColor: '#f0fdf4', borderRadius: '4px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <RenderAvatar url={osoba.avatar_url} />
-                      <span>{osoba.imie_nazwisko} {osoba.id_uzytkownika === profile.id && '(Ty)'}</span>
-                    </div>
-                    {isKierownik && (
-                      <button onClick={() => naZmienKwalifikacje(koncertId, osoba.id_uzytkownika, false)} style={{ padding: '2px 6px', backgroundColor: '#fef3c7', color: '#92400e', border: 'none', borderRadius: '4px', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold' }}>Rezerwa ⏳</button>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {rezerwa.length > 0 && (
-            <div>
-              <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#d97706' }}>⏳ Lista rezerwowa ({rezerwa.length}):</span>
-              <ul style={{ margin: '2px 0 0 15px', paddingLeft: '10px', fontSize: '13px', color: '#334155' }}>
-                {rezerwa.map(osoba => (
-                  <li key={osoba.id_uzytkownika} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', padding: '4px 8px', backgroundColor: '#fffbeb', borderRadius: '4px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <RenderAvatar url={osoba.avatar_url} />
-                      <span>{osoba.imie_nazwisko} {osoba.id_uzytkownika === profile.id && '(Ty)'}</span>
-                    </div>
-                    {isKierownik && (
-                      <button onClick={() => naZmienKwalifikacje(koncertId, osoba.id_uzytkownika, true)} style={{ padding: '3px 6px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '4px', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold' }}>Zakwalifikuj ✔️</button>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
       )}
     </div>
   );
