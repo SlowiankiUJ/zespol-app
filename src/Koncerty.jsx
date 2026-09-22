@@ -27,10 +27,9 @@ export default function Koncerty({ profile }) {
   const [rozwinieteSklady, setRozwinieteSklady] = useState({});
   const [wybranyKoncertWalizki, setWybranyKoncertWalizki] = useState(null);
 
-  // Widoki i nowe stany do dodawania układów
   const [widok, setWidok] = useState('nadchodzace');
   const [noweUklady, setNoweUklady] = useState({});
-  const [nowyTypUkladu, setNowyTypUkladu] = useState({}); // Przechowuje typ wybranego układu (baletowy, chóralny itp.)
+  const [nowyTypUkladu, setNowyTypUkladu] = useState({});
 
   const [tytul, setTytul] = useState('');
   const [dataKoncertu, setDataKoncertu] = useState('');
@@ -97,7 +96,6 @@ export default function Koncerty({ profile }) {
     const koncertIds = listaKoncertow.map(k => k.id);
     if (koncertIds.length === 0) return;
 
-    // Pobieramy programy wraz z nową kolumną typ_ukladu
     const { data: progData } = await supabase.from('koncert_program').select('*').in('id_koncertu', koncertIds).order('id', { ascending: true });
     if (progData) {
       const mapaProgramow = {}; 
@@ -187,7 +185,7 @@ export default function Koncerty({ profile }) {
 
   const dodajPunktProgramu = async (koncertId) => {
     const tytulUkladu = noweUklady[koncertId];
-    const typUkladu = nowyTypUkladu[koncertId] || 'baletowy'; // Domyślna wartość to baletowy
+    const typUkladu = nowyTypUkladu[koncertId] || 'baletowy';
     
     if (!tytulUkladu || tytulUkladu.trim() === '') return;
     
@@ -227,7 +225,6 @@ export default function Koncerty({ profile }) {
   const inputStyle = { width: '100%', boxSizing: 'border-box', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px', backgroundColor: '#fff', color: '#000' };
   const labelStyle = { display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#64748b', marginBottom: '4px' };
 
-  // Podział na koncerty nadchodzące i odbyte
   const teraz = new Date();
   const nadchodzaceKoncerty = koncerty.filter(k => new Date(k.data_czas) >= teraz);
   const odbyteKoncerty = koncerty.filter(k => new Date(k.data_czas) < teraz).sort((a, b) => new Date(b.data_czas) - new Date(a.data_czas));
@@ -238,7 +235,6 @@ export default function Koncerty({ profile }) {
     <div style={{ marginTop: '20px', padding: '25px', border: '1px solid #e2e8f0', borderRadius: '12px', backgroundColor: '#ffffff', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
       <h2 style={{ color: '#1e293b', marginBottom: '15px', fontSize: '20px' }}>Koncerty i Wydarzenia 🎻</h2>
 
-      {/* Formularz dodawania koncertu - TYLKO DLA KIEROWNIKA */}
       {isKierownik && (
         <div style={{ marginBottom: '30px', padding: '20px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
           <h3 style={{ margin: '0 0 15px 0', fontSize: '16px', color: '#334155' }}>Zaplanuj nowy koncert</h3>
@@ -391,7 +387,28 @@ export default function Koncerty({ profile }) {
                           </div>
                           {podzakladka === 'sklad' && (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                              {renderujListeOsobek('🩰 Balet', balet, koncert.id, profile, zmienKwalifikacje)}
+                              
+                              {/* BALET PODZIELONY NA PANI / PAN */}
+                              <div>
+                                <h5 style={{ margin: '0 0 8px 0', fontSize: '15px', color: '#1e293b', borderBottom: '2px solid #8b5cf6', paddingBottom: '4px' }}>🩰 Balet (Ogółem: {balet.length} zgłoszonych)</h5>
+                                {['Pani', 'Pan'].map(grupaName => {
+                                  const osobyGrupy = balet.filter(o => o.glos === grupaName);
+                                  if (osobyGrupy.length === 0) return null;
+                                  return (
+                                    <div key={grupaName} style={{ marginTop: '10px', paddingLeft: '10px' }}>
+                                      {renderujListeOsobek(`• ${grupaName === 'Pani' ? 'Panie' : 'Panowie'} (${grupaName})`, osobyGrupy, koncert.id, profile, zmienKwalifikacje, true)}
+                                    </div>
+                                  );
+                                })}
+                                {balet.some(o => !o.glos) && (
+                                  <div style={{ marginTop: '10px', paddingLeft: '10px' }}>
+                                    {renderujListeOsobek('• Bez przypisania', balet.filter(o => !o.glos), koncert.id, profile, zmienKwalifikacje, true)}
+                                  </div>
+                                )}
+                                {balet.length === 0 && <p style={{ fontSize: '13px', color: '#94a3b8', margin: '0' }}>Brak zgłoszeń w balecie</p>}
+                              </div>
+
+                              {/* CHÓR PODZIELONY NA GŁOSY */}
                               <div>
                                 <h5 style={{ margin: '0 0 8px 0', fontSize: '15px', color: '#1e293b', borderBottom: '2px solid #d69e2e', paddingBottom: '4px' }}>🎤 Chór (Ogółem: {chor.length} zgłoszonych)</h5>
                                 {['Sopran', 'Alt', 'Tenor', 'Bas'].map(glosName => {
@@ -401,6 +418,8 @@ export default function Koncerty({ profile }) {
                                 })}
                                 {chor.length === 0 && <p style={{ fontSize: '13px', color: '#94a3b8', margin: '0' }}>Brak zgłoszeń w chórze</p>}
                               </div>
+
+                              {/* KAPELA */}
                               {renderujListeOsobek('🎻 Kapela', kapela, koncert.id, profile, zmienKwalifikacje)}
                             </div>
                           )}
@@ -430,11 +449,9 @@ export default function Koncerty({ profile }) {
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
                                   {programyDlaKoncertu.map((prog, index) => {
                                     const obsadaIds = obsadyProgramow[prog.id] || [];
-                                    // Zbieramy do selecta wszystkich zakwalifikowanych bez żadnego sprawdzania sekcji
                                     const osobyWpisu = zakwalifikowaniWszyscy.filter(z => obsadaIds.includes(z.id_uzytkownika));
                                     const wolniDoObsadzenia = zakwalifikowaniWszyscy.filter(z => !obsadaIds.includes(z.id_uzytkownika));
                                     
-                                    // Ikonka dla punktu programu
                                     const typIcon = prog.typ_ukladu === 'chóralny' ? '🎤' : prog.typ_ukladu === 'kapeli' ? '🎻' : prog.typ_ukladu === 'ogólny' ? '🎭' : '🩰';
 
                                     return (
@@ -489,7 +506,6 @@ export default function Koncerty({ profile }) {
         </div>
       )}
 
-      {/* MODAL PRZYDZIAŁU WALIZEK */}
       {wybranyKoncertWalizki && (
         <WalizkiModal
           koncert={wybranyKoncertWalizki}

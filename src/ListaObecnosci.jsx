@@ -20,7 +20,6 @@ export default function ListaObecnosci({ probaId, sekcja }) {
 
   const pobierzListeIWeryfikacje = async () => {
     try {
-      // 1. Członkowie główni danej sekcji
       let query = supabase
         .from('profiles')
         .select('id, imie_nazwisko, sekcja, glos, avatar_url')
@@ -33,7 +32,6 @@ export default function ListaObecnosci({ probaId, sekcja }) {
 
       const { data: czlonkowieData } = await query.order('imie_nazwisko', { ascending: true });
 
-      // 2. Członkowie gościnni (jeśli próba nie jest generalna)
       let goscieData = [];
       if (sekcja && sekcja !== 'generalna') {
         const { data: dodatkowe } = await supabase
@@ -55,13 +53,11 @@ export default function ListaObecnosci({ probaId, sekcja }) {
         }
       }
 
-      // Oznaczamy gości flagą czyGosc
       const calaLista = [
         ...(czlonkowieData || []).map(c => ({ ...c, czyGosc: false })),
         ...goscieData.map(g => ({ ...g, czyGosc: true }))
       ];
 
-      // 3. Pobieramy deklaracje dla tej próby
       const { data: dekData } = await supabase
         .from('deklaracje_obecnosci')
         .select('*')
@@ -99,24 +95,23 @@ export default function ListaObecnosci({ probaId, sekcja }) {
     let nowaObecnosc = null;
     let noweSpoznienie = false;
 
-    // Logika przełączania (toggle) przycisków
     if (typAkcji === 'obecny') {
       if (dotychczasowyWpis.obecny === true && !dotychczasowyWpis.spozniony) {
-        nowaObecnosc = null; noweSpoznienie = false; // Odznaczenie
+        nowaObecnosc = null; noweSpoznienie = false;
       } else {
         nowaObecnosc = true; noweSpoznienie = false;
       }
     } else if (typAkcji === 'nieobecny') {
       if (dotychczasowyWpis.obecny === false) {
-        nowaObecnosc = null; noweSpoznienie = false; // Odznaczenie
+        nowaObecnosc = null; noweSpoznienie = false;
       } else {
         nowaObecnosc = false; noweSpoznienie = false;
       }
     } else if (typAkcji === 'spozniony') {
       if (dotychczasowyWpis.spozniony === true) {
-        nowaObecnosc = null; noweSpoznienie = false; // Odznaczenie
+        nowaObecnosc = null; noweSpoznienie = false;
       } else {
-        nowaObecnosc = null; noweSpoznienie = true; // Ustawienie spóźnienia
+        nowaObecnosc = null; noweSpoznienie = true;
       }
     }
 
@@ -174,7 +169,6 @@ export default function ListaObecnosci({ probaId, sekcja }) {
                 gap: '10px' 
               }}
             >
-              {/* Dane członka i deklaracja */}
               <div style={{ flex: '1 1 240px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <RenderAvatar url={c.avatar_url} />
@@ -193,7 +187,6 @@ export default function ListaObecnosci({ probaId, sekcja }) {
                   )}
                 </div>
 
-                {/* Etykieta deklaracji */}
                 <div style={{ marginTop: '4px', marginLeft: '36px' }}>
                   {status === 'spozniony' ? (
                     <div>
@@ -229,7 +222,6 @@ export default function ListaObecnosci({ probaId, sekcja }) {
                 </div>
               </div>
 
-              {/* Przyciski weryfikacji kadry */}
               <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                 <button
                   onClick={() => ustawObecnoscKadra(c.id, 'obecny')}

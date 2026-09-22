@@ -56,7 +56,6 @@ export default function ListaCzlonkow({ profile }) {
   };
 
   const przełączSzczegóły = async (czlonek) => {
-    // Jeśli klikamy tego samego, to go zwijamy
     if (wybranyId === czlonek.id) {
       setWybranyId(null);
       setWybranyCzłonek(null);
@@ -71,7 +70,6 @@ export default function ListaCzlonkow({ profile }) {
       const sekcjaOsoby = oczyscTekst(czlonek.sekcja);
       const userId = czlonek.id;
 
-      // 1. POBIERAMY DEKLARACJE OBECNOŚCI
       const { data: obecnosciZProbami, error: obecnosciError } = await supabase
         .from('deklaracje_obecnosci')
         .select(`
@@ -121,7 +119,6 @@ export default function ListaCzlonkow({ profile }) {
 
       const procentFrekwencji = tot > 0 ? Math.round((ob / tot) * 100) : 0;
 
-      // 2. POZOSTAŁE DANE: KONCERTY, OBSADA, WALIZKI, KWIATKI
       const [resKoncerty, resObsada, resWalizki, resKwiatki] = await Promise.all([
         supabase.from('deklaracje_koncerty').select('id_koncertu, zakwalifikowany').eq('id_uzytkownika', userId),
         supabase.from('koncert_obsada').select('id').eq('id_uzytkownika', userId),
@@ -135,7 +132,6 @@ export default function ListaCzlonkow({ profile }) {
       const liczbaWalizek = resWalizki.data ? resWalizki.data.length : 0;
       const liczbaKwiatkow = resKwiatki.data ? resKwiatki.data.length : 0;
 
-      // GENEROWANIE TYLKO ZDOBYTYCH ODZNAK
       const odznaki = [];
 
       if (aktualnyStreak >= 5) odznaki.push({ tytuł: 'Rozgrzewka w tańcu (5 prób)', ikona: '👟' });
@@ -175,7 +171,6 @@ export default function ListaCzlonkow({ profile }) {
         odznaki: odznaki
       });
 
-      // Płynne przewinięcie do rozwiniętej sekcji bez skakania na samą górę
       setTimeout(() => {
         if (szczegolyRef.current) {
           szczegolyRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -200,14 +195,12 @@ export default function ListaCzlonkow({ profile }) {
         Przeglądaj profile znajomych z zespołu, sprawdź ich sekcje, oficjalną frekwencję oraz zdobyte osiągnięcia!
       </p>
 
-      {/* SIATKA CZŁONKÓW WRAZ Z ROZWIJANYMI SZCZEGÓŁAMI */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '15px' }}>
         {czlonkowie.map((czlonek) => {
           const czyWybrany = wybranyId === czlonek.id;
 
           return (
             <div key={czlonek.id} style={{ display: 'contents' }}>
-              {/* KAFELEK CZŁONKA */}
               <div 
                 onClick={() => przełączSzczegóły(czlonek)}
                 style={{ 
@@ -238,6 +231,7 @@ export default function ListaCzlonkow({ profile }) {
                   </h4>
                   <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>
                     Sekcja: <strong style={{ textTransform: 'uppercase', color: '#3182ce' }}>{czlonek.sekcja}</strong>
+                    {czlonek.glos && ` (${czlonek.glos})`}
                   </p>
                   <span style={{ display: 'inline-block', marginTop: '4px', fontSize: '11px', color: '#8b5cf6', fontWeight: 'bold' }}>
                     {czyWybrany ? 'Zwiń profil ▲' : 'Rozwiń profil ▼'}
@@ -245,7 +239,6 @@ export default function ListaCzlonkow({ profile }) {
                 </div>
               </div>
 
-              {/* ROZWIJANY PANEL SZCZEGÓŁÓW (WSTAWIANY BEZPOŚREDNIO POD SIATKĄ DLA WYBRANEJ OSOBY) */}
               {czyWybrany && (
                 <div 
                   ref={szczegolyRef}

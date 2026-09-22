@@ -5,9 +5,10 @@ export default function Login() {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState(''); // Stan na powtórzone hasło
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [imieNazwisko, setImieNazwisko] = useState('');
   const [sekcja, setSekcja] = useState('chór');
+  const [glos, setGlos] = useState(''); // Dla chóru lub baletu
   const [rola, setRola] = useState('członek');
   const [message, setMessage] = useState('');
 
@@ -16,11 +17,9 @@ export default function Login() {
     setMessage('Przetwarzanie...');
 
     if (isLogin) {
-      // Logowanie
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) setMessage('Błąd logowania: ' + error.message);
     } else {
-      // Rejestracja - walidacja haseł
       if (password !== confirmPassword) {
         setMessage('Błąd: Wprowadzone hasła muszą być takie same!');
         return;
@@ -31,7 +30,6 @@ export default function Login() {
         return;
       }
 
-      // Rejestracja w Supabase Auth
       const { data, error } = await supabase.auth.signUp({ 
         email, 
         password,
@@ -43,14 +41,20 @@ export default function Login() {
       if (error) {
         setMessage('Błąd rejestracji: ' + error.message);
       } else if (data?.user) {
-        // Jeśli rola to nie członek, sekcja zapisuje się jako null
         const zapisywanaSekcja = rola === 'członek' ? sekcja : null;
+        let zapisywanyGlos = null;
+        if (rola === 'członek') {
+          if (sekcja === 'chór' || sekcja === 'balet') {
+            zapisywanyGlos = glos || null;
+          }
+        }
 
         const { error: profileError } = await supabase.from('profiles').insert([
           { 
             id: data.user.id, 
             imie_nazwisko: imieNazwisko, 
             sekcja: zapisywanaSekcja, 
+            glos: zapisywanyGlos,
             rola: rola, 
             status: 'oczekujący' 
           }
@@ -67,8 +71,6 @@ export default function Login() {
 
   return (
     <div style={{ maxWidth: '400px', margin: '40px auto', padding: '25px', border: '1px solid #334155', borderRadius: '12px', backgroundColor: '#1e293b', color: '#ffffff', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', textAlign: 'center' }}>
-      
-      {/* Białe logo idealnie widoczne na ciemnym tle */}
       <img 
         src="/logo.png" 
         alt="Logo ZPiT UJ Słowianki" 
@@ -98,29 +100,69 @@ export default function Login() {
               <label style={{ display: 'block', marginBottom: '5px', fontWeight: '500', color: '#cbd5e1' }}>Rola</label>
               <select 
                 value={rola} 
-                onChange={(e) => setRola(e.target.value)}
+                onChange={(e) => {
+                  setRola(e.target.value);
+                  setGlos('');
+                }}
                 style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #475569', backgroundColor: '#0f172a', color: '#ffffff', boxSizing: 'border-box' }}
               >
                 <option value="członek">Członek zespołu</option>
                 <option value="pracownik">Pracownik / Instruktor</option>
-                {/* Opcja kierownika została usunięta */}
               </select>
             </div>
 
-            {/* Wybór sekcji widoczny TYLKO gdy rola to 'członek' */}
             {rola === 'członek' && (
-              <div>
-                <label style={{ display: 'block', marginBottom: '5px', fontWeight: '500', color: '#cbd5e1' }}>Sekcja</label>
-                <select 
-                  value={sekcja} 
-                  onChange={(e) => setSekcja(e.target.value)}
-                  style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #475569', backgroundColor: '#0f172a', color: '#ffffff', boxSizing: 'border-box' }}
-                >
-                  <option value="chór">Chór</option>
-                  <option value="balet">Balet</option>
-                  <option value="kapela">Kapela</option>
-                </select>
-              </div>
+              <>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '5px', fontWeight: '500', color: '#cbd5e1' }}>Sekcja</label>
+                  <select 
+                    value={sekcja} 
+                    onChange={(e) => {
+                      setSekcja(e.target.value);
+                      setGlos('');
+                    }}
+                    style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #475569', backgroundColor: '#0f172a', color: '#ffffff', boxSizing: 'border-box' }}
+                  >
+                    <option value="chór">Chór</option>
+                    <option value="balet">Balet</option>
+                    <option value="kapela">Kapela</option>
+                  </select>
+                </div>
+
+                {sekcja === 'chór' && (
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '5px', fontWeight: '500', color: '#cbd5e1' }}>Wybierz głos:</label>
+                    <select 
+                      value={glos} 
+                      onChange={(e) => setGlos(e.target.value)} 
+                      required
+                      style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #475569', backgroundColor: '#0f172a', color: '#ffffff', boxSizing: 'border-box' }}
+                    >
+                      <option value="">-- Wybierz głos --</option>
+                      <option value="Sopran">Sopran</option>
+                      <option value="Alt">Alt</option>
+                      <option value="Tenor">Tenor</option>
+                      <option value="Bas">Bas</option>
+                    </select>
+                  </div>
+                )}
+
+                {sekcja === 'balet' && (
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '5px', fontWeight: '500', color: '#cbd5e1' }}>Wybierz grupę:</label>
+                    <select 
+                      value={glos} 
+                      onChange={(e) => setGlos(e.target.value)} 
+                      required
+                      style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #475569', backgroundColor: '#0f172a', color: '#ffffff', boxSizing: 'border-box' }}
+                    >
+                      <option value="">-- Wybierz opcję --</option>
+                      <option value="Pani">Pani</option>
+                      <option value="Pan">Pan</option>
+                    </select>
+                  </div>
+                )}
+              </>
             )}
           </>
         )}
@@ -149,7 +191,6 @@ export default function Login() {
           />
         </div>
 
-        {/* Drugie pole hasła widoczne tylko przy rejestracji */}
         {!isLogin && (
           <div>
             <label style={{ display: 'block', marginBottom: '5px', fontWeight: '500', color: '#cbd5e1' }}>Powtórz hasło</label>

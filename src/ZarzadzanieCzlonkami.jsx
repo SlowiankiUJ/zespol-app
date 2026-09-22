@@ -52,7 +52,6 @@ export default function ZarzadzanieCzlonkami() {
 
       if (probyError) throw probyError;
 
-      // POBIERAMY KOLUMNĘ 'spozniony' (jeśli jeszcze jej nie ma, upewnij się w Supabase, że dodałeś BOOLEAN spozniony domyślnie false w tabeli deklaracje_obecnosci)
       const { data: dekData, error: dekError } = await supabase
         .from('deklaracje_obecnosci')
         .select('id_uzytkownika, id_proby, obecny, spozniony');
@@ -98,13 +97,12 @@ export default function ZarzadzanieCzlonkami() {
           .filter(item => item.sekcja && item.sekcja === glownaSekcja && item.sekcja !== 'generalna');
 
         tylkoWlasneObecnosci.forEach(item => {
-          // Jeśli jest obecny (punktualnie) LUB jest oznaczony jako spóźniony -> liczymy jako OBECNOŚĆ
           if (item.obecny === true || item.spozniony === true) {
             ob++;
             tot++;
             if (item.spozniony === true) ileSpoznien++;
           } else if (item.obecny === false) {
-            tot++; // Nieobecność
+            tot++;
           }
         });
 
@@ -149,11 +147,13 @@ export default function ZarzadzanieCzlonkami() {
     if (!wybranyDoEdycji) return;
     setKomunikat('Zapisywanie zmian...');
 
+    const glosDoZapisu = (nowaSekcja === 'chór' || nowaSekcja === 'balet') ? nowyGlos : null;
+
     const { error } = await supabase
       .from('profiles')
       .update({
         sekcja: nowaSekcja,
-        glos: nowaSekcja === 'chór' ? nowyGlos : null,
+        glos: glosDoZapisu,
         rola: nowaRola,
         czy_inspektor: czyInspektorEdycja
       })
@@ -275,7 +275,14 @@ export default function ZarzadzanieCzlonkami() {
           <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', alignItems: 'center' }}>
             <div>
               <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#64748b', marginBottom: '4px' }}>Sekcja główna:</label>
-              <select value={nowaSekcja} onChange={(e) => setNowaSekcja(e.target.value)} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', backgroundColor: '#fff', color: '#000' }}>
+              <select 
+                value={nowaSekcja} 
+                onChange={(e) => {
+                  setNowaSekcja(e.target.value);
+                  setNowyGlos('');
+                }} 
+                style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', backgroundColor: '#fff', color: '#000' }}
+              >
                 <option value="balet">Balet</option>
                 <option value="chór">Chór</option>
                 <option value="kapela">Kapela</option>
@@ -291,6 +298,17 @@ export default function ZarzadzanieCzlonkami() {
                   <option value="Alt">Alt</option>
                   <option value="Tenor">Tenor</option>
                   <option value="Bas">Bas</option>
+                </select>
+              </div>
+            )}
+
+            {nowaSekcja === 'balet' && (
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#64748b', marginBottom: '4px' }}>Grupa:</label>
+                <select value={nowyGlos} onChange={(e) => setNowyGlos(e.target.value)} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', backgroundColor: '#fff', color: '#000' }}>
+                  <option value="">Wybierz grupę</option>
+                  <option value="Pani">Pani</option>
+                  <option value="Pan">Pan</option>
                 </select>
               </div>
             )}

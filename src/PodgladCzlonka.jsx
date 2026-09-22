@@ -35,7 +35,9 @@ export default function PodgladCzlonka({ profile }) {
     setLoading(true);
 
     const daneDoAktualizacji = { imie_nazwisko: imieNazwisko };
-    if (profile.sekcja === 'chór') daneDoAktualizacji.glos = glos;
+    if (profile.sekcja === 'chór' || profile.sekcja === 'balet') {
+      daneDoAktualizacji.glos = glos;
+    }
 
     const { error } = await supabase
       .from('profiles')
@@ -155,6 +157,11 @@ export default function PodgladCzlonka({ profile }) {
             <strong>Głos:</strong> <span style={{ color: '#d97706', fontWeight: 'bold' }}>{profile.glos || 'Nie wybrano'}</span>
           </p>
         )}
+        {profile.sekcja === 'balet' && (
+          <p style={{ margin: 0, fontSize: '14px', color: '#334155' }}>
+            <strong>Grupa:</strong> <span style={{ color: '#d97706', fontWeight: 'bold' }}>{profile.glos || 'Nie wybrano'}</span>
+          </p>
+        )}
       </div>
 
       <form onSubmit={zaktualizujProfil} style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginBottom: '30px' }}>
@@ -171,6 +178,16 @@ export default function PodgladCzlonka({ profile }) {
               <option value="Alt">Alt</option>
               <option value="Tenor">Tenor</option>
               <option value="Bas">Bas</option>
+            </select>
+          </div>
+        )}
+        {profile.sekcja === 'balet' && (
+          <div>
+            <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#334155', marginBottom: '5px' }}>Wybierz grupę:</label>
+            <select value={glos} onChange={(e) => setGlos(e.target.value)} required style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#fff', color: '#000', boxSizing: 'border-box' }}>
+              <option value="">-- Wybierz opcję --</option>
+              <option value="Pani">Pani</option>
+              <option value="Pan">Pan</option>
             </select>
           </div>
         )}
