@@ -76,82 +76,114 @@ export default function Koncerty({ profile }) {
   }, [profile]);
 
   const pobierzKoncerty = async () => {
-    const { data, error } = await supabase.from('koncerty').select('*').order('data_czas', { ascending: true });
-    if (!error && data) {
-      setKoncerty(data);
-      if (profile.rola === 'członek') pobierzMojeDeklaracjeKoncertow();
-      pobierzWszystkichZapisanych(data);
-      pobierzProgramy(data);
-      pobierzGosciMacierzy(data);
+    try {
+      const { data, error } = await supabase.from('koncerty').select('*').order('data_czas', { ascending: true });
+      if (error) throw error;
+      
+      if (data) {
+        setKoncerty(data);
+        if (profile.rola === 'członek') pobierzMojeDeklaracjeKoncertow();
+        pobierzWszystkichZapisanych(data);
+        pobierzProgramy(data);
+        pobierzGosciMacierzy(data);
+      }
+    } catch (err) {
+      console.error('Błąd pobierania koncertów:', err);
     }
   };
 
   const pobierzMojeDeklaracjeKoncertow = async () => {
-    const { data, error } = await supabase.from('deklaracje_koncerty').select('id_koncertu, planuje').eq('id_uzytkownika', profile.id);
-    if (!error && data) {
-      const mapa = {}; 
-      data.forEach(d => { mapa[d.id_koncertu] = d.planuje; });
-      setDeklaracjeKoncertow(mapa);
+    try {
+      const { data, error } = await supabase.from('deklaracje_koncerty').select('id_koncertu, planuje').eq('id_uzytkownika', profile.id);
+      if (error) throw error;
+      if (data) {
+        const mapa = {}; 
+        data.forEach(d => { mapa[d.id_koncertu] = d.planuje; });
+        setDeklaracjeKoncertow(mapa);
+      }
+    } catch (err) {
+      console.error('Błąd pobierania moich deklaracji:', err);
     }
   };
 
   const pobierzWszystkichZapisanych = async (listaKoncertow) => {
-    const koncertIds = listaKoncertow.map(k => k.id);
-    if (koncertIds.length === 0) return;
+    try {
+      const koncertIds = listaKoncertow.map(k => k.id);
+      if (koncertIds.length === 0) return;
 
-    const { data: dekData } = await supabase.from('deklaracje_koncerty').select('id, id_koncertu, id_uzytkownika, planuje, zakwalifikowany').in('id_koncertu', koncertIds);
-    const { data: profData } = await supabase.from('profiles').select('id, imie_nazwisko, sekcja, glos, avatar_url').eq('status', 'zatwierdzony');
+      const { data: dekData, error: dekErr } = await supabase.from('deklaracje_koncerty').select('id, id_koncertu, id_uzytkownika, planuje, zakwalifikowany').in('id_koncertu', koncertIds);
+      if (dekErr) throw dekErr;
+      
+      const { data: profData, error: profErr } = await supabase.from('profiles').select('id, imie_nazwisko, sekcja, glos, avatar_url').eq('status', 'zatwierdzony');
+      if (profErr) throw profErr;
 
-    if (dekData && profData) {
-      const profileMap = {}; 
-      profData.forEach(p => { profileMap[p.id] = p; });
-      const mapaZapisanych = {}; 
-      koncertIds.forEach(id => { mapaZapisanych[id] = []; });
-      dekData.forEach(d => {
-        if (profileMap[d.id_uzytkownika]) {
-          mapaZapisanych[d.id_koncertu].push({ id: d.id, id_uzytkownika: d.id_uzytkownika, planuje: d.planuje, zakwalifikowany: d.zakwalifikowany, ...profileMap[d.id_uzytkownika] });
-        }
-      });
-      setZapisaniNaKoncert(mapaZapisanych);
+      if (dekData && profData) {
+        const profileMap = {}; 
+        profData.forEach(p => { profileMap[p.id] = p; });
+        const mapaZapisanych = {}; 
+        koncertIds.forEach(id => { mapaZapisanych[id] = []; });
+        dekData.forEach(d => {
+          if (profileMap[d.id_uzytkownika]) {
+            mapaZapisanych[d.id_koncertu].push({ id: d.id, id_uzytkownika: d.id_uzytkownika, planuje: d.planuje, zakwalifikowany: d.zakwalifikowany, ...profileMap[d.id_uzytkownika] });
+          }
+        });
+        setZapisaniNaKoncert(mapaZapisanych);
+      }
+    } catch (err) {
+      console.error('Błąd pobierania zapisanych osób:', err);
     }
   };
 
   const pobierzProgramy = async (listaKoncertow) => {
-    const koncertIds = listaKoncertow.map(k => k.id);
-    if (koncertIds.length === 0) return;
+    try {
+      const koncertIds = listaKoncertow.map(k => k.id);
+      if (koncertIds.length === 0) return;
 
-    const { data: progData } = await supabase.from('koncert_program').select('*').in('id_koncertu', koncertIds).order('id', { ascending: true });
-    if (progData) {
-      const mapaProgramow = {}; 
-      koncertIds.forEach(id => { mapaProgramow[id] = []; });
-      progData.forEach(p => { if (mapaProgramow[p.id_koncertu]) mapaProgramow[p.id_koncertu].push(p); });
-      setProgramyKoncertow(mapaProgramow);
+      const { data: progData, error: progErr } = await supabase.from('koncert_program').select('*').in('id_koncertu', koncertIds).order('id', { ascending: true });
+      if (progErr) throw progErr;
+      
+      if (progData) {
+        const mapaProgramow = {}; 
+        koncertIds.forEach(id => { mapaProgramow[id] = []; });
+        progData.forEach(p => { if (mapaProgramow[p.id_koncertu]) mapaProgramow[p.id_koncertu].push(p); });
+        setProgramyKoncertow(mapaProgramow);
 
-      const programIds = progData.map(p => p.id);
-      if (programIds.length > 0) {
-        const { data: obsData } = await supabase.from('koncert_obsada').select('*').in('id_programu', programIds);
-        const mapaObsad = {}; 
-        programIds.forEach(id => { mapaObsad[id] = []; });
-        if (obsData) {
-          obsData.forEach(o => { if (mapaObsad[o.id_programu]) mapaObsad[o.id_programu].push(o.id_uzytkownika); });
+        const programIds = progData.map(p => p.id);
+        if (programIds.length > 0) {
+          const { data: obsData, error: obsErr } = await supabase.from('koncert_obsada').select('*').in('id_programu', programIds);
+          if (obsErr) throw obsErr;
+          
+          const mapaObsad = {}; 
+          programIds.forEach(id => { mapaObsad[id] = []; });
+          if (obsData) {
+            obsData.forEach(o => { if (mapaObsad[o.id_programu]) mapaObsad[o.id_programu].push(o.id_uzytkownika); });
+          }
+          setObsadyProgramow(mapaObsad);
         }
-        setObsadyProgramow(mapaObsad);
       }
+    } catch (err) {
+      console.error('Błąd pobierania programów/obsady:', err);
     }
   };
 
   const pobierzGosciMacierzy = async (listaKoncertow) => {
-    const koncertIds = listaKoncertow.map(k => k.id);
-    if (koncertIds.length === 0) return;
+    try {
+      const koncertIds = listaKoncertow.map(k => k.id);
+      if (koncertIds.length === 0) return;
 
-    const { data } = await supabase.from('koncert_goscie_macierzy').select('*').in('id_koncertu', koncertIds);
-    if (data) {
-      const mapa = {};
-      koncertIds.forEach(id => mapa[id] = []);
-      data.forEach(g => {
-        if (mapa[g.id_koncertu]) mapa[g.id_koncertu].push(g);
-      });
-      setGoscieMacierzy(mapa);
+      const { data, error } = await supabase.from('koncert_goscie_macierzy').select('*').in('id_koncertu', koncertIds);
+      if (error) throw error;
+      
+      if (data) {
+        const mapa = {};
+        koncertIds.forEach(id => mapa[id] = []);
+        data.forEach(g => {
+          if (mapa[g.id_koncertu]) mapa[g.id_koncertu].push(g);
+        });
+        setGoscieMacierzy(mapa);
+      }
+    } catch (err) {
+      console.error('Błąd pobierania gości macierzy:', err);
     }
   };
 
@@ -166,6 +198,8 @@ export default function Koncerty({ profile }) {
       setTytul(''); setDataKoncertu(''); setMiejsce(''); setProgramOpis('');
       pobierzKoncerty(); 
       setTimeout(() => setKomunikat(''), 3000);
+    } else {
+      setKomunikat('Błąd: ' + error.message);
     }
   };
 
@@ -173,6 +207,7 @@ export default function Koncerty({ profile }) {
     if (!window.confirm('Czy na pewno chcesz usunąć ten koncert?')) return;
     const { error } = await supabase.from('koncerty').delete().eq('id', id);
     if (!error) pobierzKoncerty();
+    else alert('Błąd: ' + error.message);
   };
 
   const rozpocznijEdycje = (koncert) => {
@@ -189,16 +224,19 @@ export default function Koncerty({ profile }) {
     const pelnaDataCzas = `${editDataKoncertu}T${editGodzinaKoncertu}:00`;
     const { error } = await supabase.from('koncerty').update({ tytul: editTytul, data_czas: pelnaDataCzas, miejsce: editMiejsce, program: editProgramOpis }).eq('id', koncertId);
     if (!error) { setEdycjaKoncertId(null); pobierzKoncerty(); }
+    else alert('Błąd zapisu: ' + error.message);
   };
 
   const zaktualizujDeklaracjeKoncertu = async (koncertId, statusPlanuje) => {
     const { error } = await supabase.from('deklaracje_koncerty').upsert([{ id_koncertu: koncertId, id_uzytkownika: profile.id, planuje: statusPlanuje }], { onConflict: 'id_koncertu, id_uzytkownika' });
     if (!error) { setDeklaracjeKoncertow(prev => ({ ...prev, [koncertId]: statusPlanuje })); pobierzKoncerty(); }
+    else alert('Błąd: ' + error.message);
   };
 
   const zmienKwalifikacje = async (koncertId, userId, statusZakwalifikowany) => {
     const { error } = await supabase.from('deklaracje_koncerty').update({ zakwalifikowany: statusZakwalifikowany }).eq('id_koncertu', koncertId).eq('id_uzytkownika', userId);
     if (!error) pobierzKoncerty();
+    else alert('Błąd: ' + error.message);
   };
 
   const dodajPunktProgramu = async (koncertId) => {
@@ -206,16 +244,21 @@ export default function Koncerty({ profile }) {
     const typUkladu = nowyTypUkladu[koncertId] || 'baletowy';
     if (!tytulUkladu || tytulUkladu.trim() === '') return;
     const { error } = await supabase.from('koncert_program').insert([{ id_koncertu: koncertId, tytul_ukladu: tytulUkladu.trim(), typ_ukladu: typUkladu }]);
-    if (!error) { setNoweUklady(prev => ({ ...prev, [koncertId]: '' })); pobierzKoncerty(); }
+    if (!error) { 
+      setNoweUklady(prev => ({ ...prev, [koncertId]: '' })); 
+      pobierzKoncerty(); 
+    } else {
+      alert("Błąd dodawania układu: " + error.message);
+    }
   };
 
   const usunPunktProgramu = async (programId) => {
     if (!window.confirm('Czy na pewno chcesz usunąć ten układ z programu?')) return;
     const { error } = await supabase.from('koncert_program').delete().eq('id', programId);
     if (!error) pobierzKoncerty();
+    else alert('Błąd: ' + error.message);
   };
 
-  // Funkcje edycji punktu programu
   const rozpocznijEdycjeProgramu = (prog) => {
     setEdycjaProgramuId(prog.id);
     setEditTytulUkladu(prog.tytul_ukladu);
@@ -237,17 +280,8 @@ export default function Koncerty({ profile }) {
       setEdycjaProgramuId(null);
       pobierzKoncerty();
     } else {
-      alert('Błąd zapisu: ' + error.message);
+      alert('Błąd zapisu układu: ' + error.message);
     }
-  };
-
-  const przypiszDoObsady = async (programId, userId) => {
-    const { error } = await supabase.from('koncert_obsada').insert([{ id_programu: programId, id_uzytkownika: userId }]);
-    if (!error) pobierzKoncerty();
-  };
-  const usunZObsady = async (programId, userId) => {
-    const { error } = await supabase.from('koncert_obsada').delete().eq('id_programu', programId).eq('id_uzytkownika', userId);
-    if (!error) pobierzKoncerty();
   };
 
   const przelaczObsadeWMacierzy = async (programId, userId, czyBylOznaczony) => {
@@ -261,9 +295,11 @@ export default function Koncerty({ profile }) {
     });
 
     if (czyBylOznaczony) {
-      await supabase.from('koncert_obsada').delete().eq('id_programu', programId).eq('id_uzytkownika', userId);
+      const { error } = await supabase.from('koncert_obsada').delete().eq('id_programu', programId).eq('id_uzytkownika', userId);
+      if (error) alert("Błąd usuwania z obsady: " + error.message);
     } else {
-      await supabase.from('koncert_obsada').insert([{ id_programu: programId, id_uzytkownika: userId }]);
+      const { error } = await supabase.from('koncert_obsada').insert([{ id_programu: programId, id_uzytkownika: userId }]);
+      if (error) alert("Błąd dodawania do obsady: " + error.message);
     }
   };
 
@@ -283,6 +319,7 @@ export default function Koncerty({ profile }) {
     if (!window.confirm('Czy na pewno usunąć tę osobę z macierzy? (Zniknie stąd, ale pozostanie w swojej głównej sekcji)')) return;
     const { error } = await supabase.from('koncert_goscie_macierzy').delete().eq('id', goscId);
     if (!error) pobierzKoncerty();
+    else alert('Błąd: ' + error.message);
   };
 
   const przelaczRozwiniecieSkladu = (koncertId) => { setRozwinieteSklady(prev => ({ ...prev, [koncertId]: !prev[koncertId] })); };
