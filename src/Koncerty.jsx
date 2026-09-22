@@ -18,7 +18,6 @@ const RenderAvatar = ({ url }) => (
   </div>
 );
 
-// Szybkie sortowanie członków (Balet -> Chór -> Kapela, potem po głosach/grupach)
 const sortujOsoby = (lista) => {
   return [...lista].sort((a, b) => {
     const wagaSekcji = { 'balet': 1, 'chór': 2, 'kapela': 3 };
@@ -194,16 +193,6 @@ export default function Koncerty({ profile }) {
     if (!error) pobierzKoncerty();
   };
 
-  const przypiszDoObsady = async (programId, userId) => {
-    const { error } = await supabase.from('koncert_obsada').insert([{ id_programu: programId, id_uzytkownika: userId }]);
-    if (!error) pobierzKoncerty();
-  };
-  const usunZObsady = async (programId, userId) => {
-    const { error } = await supabase.from('koncert_obsada').delete().eq('id_programu', programId).eq('id_uzytkownika', userId);
-    if (!error) pobierzKoncerty();
-  };
-
-  // ZOPTYMALIZOWANA, SZYBKA FUNKCJA DO KLIKANIA W MACIERZY EXCELA
   const przelaczObsadeWMacierzy = async (programId, userId, czyBylOznaczony) => {
     setObsadyProgramow(prev => {
       const aktualniCzlonkowie = prev[programId] || [];
@@ -225,13 +214,12 @@ export default function Koncerty({ profile }) {
   const ustawPodzakladke = (koncertId, tab) => { setAktywnaPodzakladka(prev => ({ ...prev, [koncertId]: tab })); };
 
   // ----------------------------------------------------
-  // GENERATOR PLIKÓW EXCEL (.XLSX) ODWZOROWANY Z PROJEKTU
+  // GENERATOR PLIKÓW EXCEL (.XLSX)
   // ----------------------------------------------------
   const eksportujDoExcela = (koncert, wszyscyZgloszeni, programyTegoKoncertu) => {
     const chetni = wszyscyZgloszeni.filter(z => z.planuje === true);
     const zakwalifikowani = sortujOsoby(chetni.filter(z => z.zakwalifikowany === true));
     
-    // Grupowanie układów według sekcji[cite: 1]
     const baletPrograms = programyTegoKoncertu.filter(p => ['baletowy', 'ogólny'].includes(p.typ_ukladu));
     const chorPrograms = programyTegoKoncertu.filter(p => ['chóralny', 'ogólny'].includes(p.typ_ukladu));
     const kapelaPrograms = programyTegoKoncertu.filter(p => ['kapeli', 'ogólny'].includes(p.typ_ukladu));
@@ -259,11 +247,9 @@ export default function Koncerty({ profile }) {
     // ================== ARKUSZ 2: MACIERZ ZAKWALIFIKOWANYCH ==================
     const daneArkusz2 = [];
 
-    // Metoda pomocnicza do ułożenia bloków w Arkuszu jak na zdjęciu[cite: 1]
     const generujSekcjeDoExcela = (nazwaSekcji, grupy, osoby, programy) => {
       if (osoby.length === 0) return;
 
-      // Nagłówek dla bloku sekcji
       daneArkusz2.push(['Sekcja', 'Grupa/Głos', 'Imię i nazwisko', ...programy.map(p => p.tytul_ukladu)]);
 
       let isFirstGrupaInSekcja = true;
@@ -272,7 +258,6 @@ export default function Koncerty({ profile }) {
         const osobyWGrupie = osoby.filter(o => (o.glos || '') === grupa);
         if (osobyWGrupie.length === 0 && grupa !== '') return;
 
-        // Etykieta określająca Grupę (Pani/Pan/Sopran...) pod odpowiednią kolumną
         daneArkusz2.push([isFirstGrupaInSekcja ? nazwaSekcji : '', grupa, '', ...programy.map(() => '')]);
         isFirstGrupaInSekcja = false;
 
@@ -287,21 +272,19 @@ export default function Koncerty({ profile }) {
           daneArkusz2.push(wierszOsoby);
         });
       });
-      daneArkusz2.push([]); // Pusty odstęp pomiędzy sekcjami
+      daneArkusz2.push([]);
     };
 
     generujSekcjeDoExcela('Balet', ['Pani', 'Pan', ''], baletKwalifikowani, baletPrograms);
     generujSekcjeDoExcela('Chór', ['Sopran', 'Alt', 'Tenor', 'Bas', ''], chorKwalifikowani, chorPrograms);
     generujSekcjeDoExcela('Kapela', [''], kapelaKwalifikowani, kapelaPrograms);
 
-    // TWORZENIE PLIKU
     const wb = XLSX.utils.book_new();
     const ws1 = XLSX.utils.aoa_to_sheet(daneArkusz1);
     const ws2 = XLSX.utils.aoa_to_sheet(daneArkusz2);
 
     ws1['!cols'] = [{wch: 12}, {wch: 15}, {wch: 25}, {wch: 20}];
     
-    // Obliczamy max liczbę programów, aby nadać szerokości kolumnom w arkuszu 2
     const maxProg = Math.max(baletPrograms.length, chorPrograms.length, kapelaPrograms.length);
     const colsA2 = [{wch: 12}, {wch: 15}, {wch: 25}];
     for(let i=0; i<maxProg; i++) colsA2.push({wch: 15});
@@ -315,10 +298,12 @@ export default function Koncerty({ profile }) {
   };
 
   // ----------------------------------------------------
-  // POMOCNICZY RENDERER DLA MACIERZY UI
+  // RENDERER UI Z PODZIAŁEM W STYLU EXCELA
   // ----------------------------------------------------
   const renderMacierzUI = (nazwaSekcji, ikonaSekcji, grupy, osoby, programy) => {
     if (osoby.length === 0) return null;
+
+    let isFirstGroupGlobal = true;
 
     return (
       <div style={{ marginBottom: '30px', overflowX: 'auto', border: '1px solid #cbd5e1', borderRadius: '8px' }}>
@@ -328,9 +313,9 @@ export default function Koncerty({ profile }) {
         <table style={{ minWidth: '100%', borderCollapse: 'collapse', fontSize: '13px', backgroundColor: '#fff' }}>
           <thead style={{ backgroundColor: '#f1f5f9' }}>
             <tr>
-              <th style={{ padding: '10px', borderRight: '1px solid #cbd5e1', borderBottom: '2px solid #94a3b8', textAlign: 'left', width: '80px' }}>Sekcja</th>
-              <th style={{ padding: '10px', borderRight: '1px solid #cbd5e1', borderBottom: '2px solid #94a3b8', textAlign: 'left', width: '100px' }}>Grupa/Głos</th>
-              <th style={{ padding: '10px', borderRight: '2px solid #94a3b8', borderBottom: '2px solid #94a3b8', textAlign: 'left', width: '200px' }}>Imię i nazwisko</th>
+              <th style={{ padding: '10px', borderRight: '1px solid #cbd5e1', borderBottom: '2px solid #94a3b8', textAlign: 'left', width: '90px' }}>Sekcja</th>
+              <th style={{ padding: '10px', borderRight: '1px solid #cbd5e1', borderBottom: '2px solid #94a3b8', textAlign: 'left', width: '110px' }}>Grupa/Głos</th>
+              <th style={{ padding: '10px', borderRight: '2px solid #94a3b8', borderBottom: '2px solid #94a3b8', textAlign: 'left', width: '220px' }}>Imię i nazwisko</th>
               {programy.map((prog) => (
                 <th key={prog.id} style={{ padding: '10px', borderRight: '1px solid #cbd5e1', borderBottom: '2px solid #94a3b8', textAlign: 'center', whiteSpace: 'nowrap' }}>
                   {prog.tytul_ukladu}
@@ -338,43 +323,50 @@ export default function Koncerty({ profile }) {
               ))}
             </tr>
           </thead>
-          {/* Używamy oddzielnych tagów <tbody>, aby idealnie odwzorować strukturę z Excela */}
-          {grupy.map((grupa, idxGrupy) => {
-            const osobyWGrupie = osoby.filter(o => (o.glos || '') === grupa);
-            if (osobyWGrupie.length === 0 && grupa !== '') return null;
+          <tbody>
+            {grupy.map((grupa) => {
+              const osobyWGrupie = osoby.filter(o => (o.glos || '') === grupa);
+              if (osobyWGrupie.length === 0 && grupa !== '') return null;
 
-            return (
-              <tbody key={grupa || 'brak'}>
-                <tr style={{ backgroundColor: '#f8fafc', fontWeight: 'bold' }}>
-                  <td style={{ padding: '8px 10px', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', color: '#0f172a' }}>{idxGrupy === 0 ? nazwaSekcji : ''}</td>
-                  <td style={{ padding: '8px 10px', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', color: '#0f172a' }}>{grupa}</td>
-                  <td style={{ padding: '8px 10px', borderRight: '2px solid #94a3b8', borderBottom: '1px solid #e2e8f0' }}></td>
-                  {programy.map(p => <td key={`empty-${p.id}`} style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}></td>)}
-                </tr>
-                {osobyWGrupie.map(osoba => (
-                  <tr key={osoba.id_uzytkownika}>
-                    <td style={{ padding: '8px 10px', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}></td>
-                    <td style={{ padding: '8px 10px', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}></td>
-                    <td style={{ padding: '8px 10px', borderRight: '2px solid #94a3b8', borderBottom: '1px solid #e2e8f0', color: '#1e293b' }}>{osoba.imie_nazwisko}</td>
-                    {programy.map(prog => {
-                      const czyAktualnieW = (obsadyProgramow[prog.id] || []).includes(osoba.id_uzytkownika);
-                      return (
-                        <td 
-                          key={prog.id} 
-                          style={{ padding: '0', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', textAlign: 'center', backgroundColor: czyAktualnieW ? '#d1fae5' : '#ffffff', cursor: canManageProgram ? 'pointer' : 'default', transition: 'background-color 0.1s' }}
-                          onClick={() => { if(canManageProgram) przelaczObsadeWMacierzy(prog.id, osoba.id_uzytkownika, czyAktualnieW) }}
-                        >
-                          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', minHeight: '35px' }}>
-                            {czyAktualnieW ? <span style={{ color: '#10b981', fontWeight: '900', fontSize: '16px' }}>1</span> : <span style={{ color: '#cbd5e1', fontSize: '12px' }}>-</span>}
-                          </div>
-                        </td>
-                      );
-                    })}
+              const nazwaSekcjiDoWyswietlenia = isFirstGroupGlobal ? nazwaSekcji : '';
+              isFirstGroupGlobal = false;
+
+              return (
+                <ReactFragmentHelper key={grupa || 'brak'}>
+                  {/* Wiersz grupy / głosu */}
+                  <tr style={{ backgroundColor: '#f8fafc', fontWeight: 'bold' }}>
+                    <td style={{ padding: '8px 10px', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', color: '#0f172a' }}>{nazwaSekcjiDoWyswietlenia}</td>
+                    <td style={{ padding: '8px 10px', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', color: '#d97706' }}>{grupa || 'Ogólne'}</td>
+                    <td style={{ padding: '8px 10px', borderRight: '2px solid #94a3b8', borderBottom: '1px solid #e2e8f0' }}></td>
+                    {programy.map(p => <td key={`empty-${p.id}`} style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}></td>)}
                   </tr>
-                ))}
-              </tbody>
-            );
-          })}
+                  
+                  {/* Wiersze z osobami należącymi do danej grupy */}
+                  {osobyWGrupie.map(osoba => (
+                    <tr key={osoba.id_uzytkownika}>
+                      <td style={{ padding: '8px 10px', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}></td>
+                      <td style={{ padding: '8px 10px', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}></td>
+                      <td style={{ padding: '8px 10px', borderRight: '2px solid #94a3b8', borderBottom: '1px solid #e2e8f0', color: '#1e293b' }}>{osoba.imie_nazwisko}</td>
+                      {programy.map(prog => {
+                        const czyAktualnieW = (obsadyProgramow[prog.id] || []).includes(osoba.id_uzytkownika);
+                        return (
+                          <td 
+                            key={prog.id} 
+                            style={{ padding: '0', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', textAlign: 'center', backgroundColor: czyAktualnieW ? '#d1fae5' : '#ffffff', cursor: canManageProgram ? 'pointer' : 'default', transition: 'background-color 0.1s' }}
+                            onClick={() => { if(canManageProgram) przelaczObsadeWMacierzy(prog.id, osoba.id_uzytkownika, czyAktualnieW) }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', minHeight: '35px' }}>
+                              {czyAktualnieW ? <span style={{ color: '#10b981', fontWeight: '900', fontSize: '16px' }}>1</span> : <span style={{ color: '#cbd5e1', fontSize: '12px' }}>-</span>}
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </ReactFragmentHelper>
+              );
+            })}
+          </tbody>
         </table>
       </div>
     );
@@ -461,7 +453,6 @@ export default function Koncerty({ profile }) {
             const chorKwalifikowani = zakwalifikowaniWszyscy.filter(z => z.sekcja === 'chór');
             const kapelaKwalifikowani = zakwalifikowaniWszyscy.filter(z => z.sekcja === 'kapela');
 
-            // Przydział układów[cite: 1]
             const baletPrograms = programyDlaKoncertu.filter(p => ['baletowy', 'ogólny'].includes(p.typ_ukladu));
             const chorPrograms = programyDlaKoncertu.filter(p => ['chóralny', 'ogólny'].includes(p.typ_ukladu));
             const kapelaPrograms = programyDlaKoncertu.filter(p => ['kapeli', 'ogólny'].includes(p.typ_ukladu));
@@ -644,6 +635,11 @@ export default function Koncerty({ profile }) {
       )}
     </div>
   );
+}
+
+// Pomocniczy komponent do mapowania bloków
+function ReactFragmentHelper({ children }) {
+  return <>{children}</>;
 }
 
 function renderujListeOsobek(tytulSekcji, listaOsob, koncertId, profile, naZmienKwalifikacje, isPodgrupa = false) {
