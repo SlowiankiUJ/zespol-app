@@ -52,9 +52,10 @@ export default function ZarzadzanieCzlonkami() {
 
       if (probyError) throw probyError;
 
+      // POBIERAMY KOLUMNĘ 'spozniony' (jeśli jeszcze jej nie ma, upewnij się w Supabase, że dodałeś BOOLEAN spozniony domyślnie false w tabeli deklaracje_obecnosci)
       const { data: dekData, error: dekError } = await supabase
         .from('deklaracje_obecnosci')
-        .select('id_uzytkownika, id_proby, obecny');
+        .select('id_uzytkownika, id_proby, obecny, spozniony');
 
       if (dekError) throw dekError;
 
@@ -81,6 +82,7 @@ export default function ZarzadzanieCzlonkami() {
 
         let ob = 0;
         let tot = 0;
+        let ileSpoznien = 0;
         let aktualnyStreak = 0;
 
         const tylkoWlasneObecnosci = deklaracjeOsoby
@@ -88,6 +90,7 @@ export default function ZarzadzanieCzlonkami() {
             const probaInfo = probyMap[String(d.id_proby)];
             return {
               obecny: d.obecny,
+              spozniony: d.spozniony,
               sekcja: probaInfo ? probaInfo.sekcja : null,
               data_czas: probaInfo ? probaInfo.data_czas : null
             };
@@ -95,21 +98,23 @@ export default function ZarzadzanieCzlonkami() {
           .filter(item => item.sekcja && item.sekcja === glownaSekcja && item.sekcja !== 'generalna');
 
         tylkoWlasneObecnosci.forEach(item => {
-          if (item.obecny === true) {
+          // Jeśli jest obecny (punktualnie) LUB jest oznaczony jako spóźniony -> liczymy jako OBECNOŚĆ
+          if (item.obecny === true || item.spozniony === true) {
             ob++;
             tot++;
+            if (item.spozniony === true) ileSpoznien++;
           } else if (item.obecny === false) {
-            tot++;
+            tot++; // Nieobecność
           }
         });
 
         const posortowane = [...tylkoWlasneObecnosci]
-          .filter(item => item.obecny === true || item.obecny === false)
+          .filter(item => item.obecny === true || item.obecny === false || item.spozniony === true)
           .sort((a, b) => new Date(b.data_czas) - new Date(a.data_czas));
 
         for (const item of posortowane) {
-          if (item.obecny === true) aktualnyStreak++;
-          else if (item.obecny === false) break;
+          if (item.obecny === true || item.spozniony === true) aktualnyStreak++;
+          else break;
         }
 
         const procent = tot > 0 ? Math.round((ob / tot) * 100) : 0;
@@ -117,6 +122,7 @@ export default function ZarzadzanieCzlonkami() {
         wyliczoneStaty[osoba.id] = {
           obecny: ob,
           lacznie: tot,
+          spoznien: ileSpoznien,
           procent: procent,
           streak: aktualnyStreak
         };
@@ -163,7 +169,6 @@ export default function ZarzadzanieCzlonkami() {
     }
   };
 
-  // Szybkie przełączanie funkcji Inspektora wprost z tabeli
   const przelaczInspektora = async (userId, aktualnyStan, imie) => {
     const nowyStan = !aktualnyStan;
     const { error } = await supabase
@@ -231,11 +236,10 @@ export default function ZarzadzanieCzlonkami() {
         <div>
           <h2 style={{ color: '#1e293b', margin: '0 0 5px 0', fontSize: '20px' }}>Zarządzanie Członkami i Frekwencja 👥</h2>
           <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>
-            Frekwencja i streak każdego członka wyliczane są <strong>wyłącznie z prób jego macierzystej sekcji</strong>.
+            Frekwencja i streak wyliczane są z prób macierzystej sekcji. Spóźnienie wlicza się jako obecność.
           </p>
         </div>
 
-        {/* FILTRY */}
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           <input
             type="text"
@@ -263,7 +267,6 @@ export default function ZarzadzanieCzlonkami() {
         </div>
       )}
 
-      {/* FORMULARZ EDYCJI CZŁONKA */}
       {wybranyDoEdycji && (
         <div style={{ marginBottom: '25px', padding: '20px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '2px solid #3b82f6' }}>
           <h3 style={{ margin: '0 0 15px 0', fontSize: '16px', color: '#1e293b' }}>
@@ -301,7 +304,6 @@ export default function ZarzadzanieCzlonkami() {
               </select>
             </div>
 
-            {/* Checkbox funkcji Inspektora */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '18px' }}>
               <input 
                 type="checkbox" 
@@ -323,15 +325,14 @@ export default function ZarzadzanieCzlonkami() {
         </div>
       )}
 
-      {/* TABELA CZŁONKÓW */}
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
           <thead>
             <tr style={{ borderBottom: '2px solid #e2e8f0', color: '#64748b', fontSize: '12px', textTransform: 'uppercase' }}>
               <th style={{ padding: '12px 10px' }}>Członek</th>
               <th style={{ padding: '12px 10px' }}>Sekcja macierzysta</th>
-              <th style={{ padding: '12px 10px' }}>Rola / Funkcja</th>
               <th style={{ padding: '12px 10px', textAlign: 'center' }}>Frekwencja</th>
+              <th style={{ padding: '12px 10px', textAlign: 'center' }}>Spóźnienia</th>
               <th style={{ padding: '12px 10px', textAlign: 'center' }}>Streak</th>
               <th style={{ padding: '12px 10px', textAlign: 'center' }}>Status</th>
               <th style={{ padding: '12px 10px', textAlign: 'right' }}>Akcje</th>
@@ -340,7 +341,7 @@ export default function ZarzadzanieCzlonkami() {
           <tbody>
             {przefiltrowaniCzlonkowie.map(c => {
               const stylSekcji = pobierzStylSekcji(c.sekcja);
-              const stat = statyCzlonkow[c.id] || { obecny: 0, lacznie: 0, procent: 0, streak: 0 };
+              const stat = statyCzlonkow[c.id] || { obecny: 0, lacznie: 0, spoznien: 0, procent: 0, streak: 0 };
 
               return (
                 <tr key={c.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
@@ -362,9 +363,6 @@ export default function ZarzadzanieCzlonkami() {
                       {c.sekcja} {c.glos && `(${c.glos})`}
                     </span>
                   </td>
-                  <td style={{ padding: '12px 10px', color: '#475569', fontSize: '13px' }}>
-                    <span style={{ textTransform: 'capitalize' }}>{c.rola}</span>
-                  </td>
                   <td style={{ padding: '12px 10px', textAlign: 'center' }}>
                     <span style={{ fontSize: '15px', fontWeight: 'bold', color: stat.procent >= 50 ? '#10b981' : '#ef4444' }}>
                       {stat.procent}%
@@ -372,6 +370,9 @@ export default function ZarzadzanieCzlonkami() {
                     <span style={{ fontSize: '11px', color: '#94a3b8', display: 'block' }}>
                       ({stat.obecny}/{stat.lacznie})
                     </span>
+                  </td>
+                  <td style={{ padding: '12px 10px', textAlign: 'center', fontWeight: 'bold', color: stat.spoznien > 0 ? '#d97706' : '#94a3b8' }}>
+                    ⏰ {stat.spoznien}
                   </td>
                   <td style={{ padding: '12px 10px', textAlign: 'center', fontWeight: 'bold', color: stat.streak > 0 ? '#f59e0b' : '#94a3b8' }}>
                     🔥 {stat.streak}
@@ -385,7 +386,6 @@ export default function ZarzadzanieCzlonkami() {
                   </td>
                   <td style={{ padding: '12px 10px', textAlign: 'right' }}>
                     <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                      {/* Przycisk nadawania / odbierania funkcji Inspektora */}
                       {c.rola === 'członek' && (
                         <button 
                           onClick={() => przelaczInspektora(c.id, c.czy_inspektor, c.imie_nazwisko)}

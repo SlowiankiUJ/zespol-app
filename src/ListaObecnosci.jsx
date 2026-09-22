@@ -79,7 +79,8 @@ export default function ListaObecnosci({ probaId, sekcja }) {
           planuje: d.planuje,
           status_deklaracji: status,
           usprawiedliwienie: d.usprawiedliwienie,
-          obecny: d.obecny
+          obecny: d.obecny,
+          spozniony: d.spozniony || false
         };
       });
 
@@ -92,16 +93,38 @@ export default function ListaObecnosci({ probaId, sekcja }) {
     }
   };
 
-  const ustawObecnoscKadra = async (userId, wartoscObecny) => {
+  const ustawObecnoscKadra = async (userId, typAkcji) => {
     const dotychczasowyWpis = deklaracje[userId] || {};
     
-    // Jeśli kliknięto ten sam przycisk, czyścimy oznaczenie (null)
-    const nowaWartosc = dotychczasowyWpis.obecny === wartoscObecny ? null : wartoscObecny;
+    let nowaObecnosc = null;
+    let noweSpoznienie = false;
+
+    // Logika przełączania (toggle) przycisków
+    if (typAkcji === 'obecny') {
+      if (dotychczasowyWpis.obecny === true && !dotychczasowyWpis.spozniony) {
+        nowaObecnosc = null; noweSpoznienie = false; // Odznaczenie
+      } else {
+        nowaObecnosc = true; noweSpoznienie = false;
+      }
+    } else if (typAkcji === 'nieobecny') {
+      if (dotychczasowyWpis.obecny === false) {
+        nowaObecnosc = null; noweSpoznienie = false; // Odznaczenie
+      } else {
+        nowaObecnosc = false; noweSpoznienie = false;
+      }
+    } else if (typAkcji === 'spozniony') {
+      if (dotychczasowyWpis.spozniony === true) {
+        nowaObecnosc = null; noweSpoznienie = false; // Odznaczenie
+      } else {
+        nowaObecnosc = null; noweSpoznienie = true; // Ustawienie spóźnienia
+      }
+    }
 
     const payload = {
       id_proby: probaId,
       id_uzytkownika: userId,
-      obecny: nowaWartosc,
+      obecny: nowaObecnosc,
+      spozniony: noweSpoznienie,
       planuje: dotychczasowyWpis.planuje,
       status_deklaracji: dotychczasowyWpis.status_deklaracji,
       usprawiedliwienie: dotychczasowyWpis.usprawiedliwienie
@@ -114,8 +137,10 @@ export default function ListaObecnosci({ probaId, sekcja }) {
     if (!error) {
       setDeklaracje(prev => ({
         ...prev,
-        [userId]: { ...prev[userId], obecny: nowaWartosc }
+        [userId]: { ...prev[userId], obecny: nowaObecnosc, spozniony: noweSpoznienie }
       }));
+    } else {
+      console.error('Błąd zapisu obecności:', error.message);
     }
   };
 
@@ -168,7 +193,7 @@ export default function ListaObecnosci({ probaId, sekcja }) {
                   )}
                 </div>
 
-                {/* Etykieta deklaracji ze spóźnieniem */}
+                {/* Etykieta deklaracji */}
                 <div style={{ marginTop: '4px', marginLeft: '36px' }}>
                   {status === 'spozniony' ? (
                     <div>
@@ -205,16 +230,16 @@ export default function ListaObecnosci({ probaId, sekcja }) {
               </div>
 
               {/* Przyciski weryfikacji kadry */}
-              <div style={{ display: 'flex', gap: '6px' }}>
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                 <button
-                  onClick={() => ustawObecnoscKadra(c.id, true)}
+                  onClick={() => ustawObecnoscKadra(c.id, 'obecny')}
                   style={{
                     padding: '6px 12px',
                     borderRadius: '6px',
                     border: '1px solid',
-                    borderColor: dek.obecny === true ? '#10b981' : '#cbd5e1',
-                    backgroundColor: dek.obecny === true ? '#10b981' : '#ffffff',
-                    color: dek.obecny === true ? '#ffffff' : '#334155',
+                    borderColor: (dek.obecny === true && !dek.spozniony) ? '#10b981' : '#cbd5e1',
+                    backgroundColor: (dek.obecny === true && !dek.spozniony) ? '#10b981' : '#ffffff',
+                    color: (dek.obecny === true && !dek.spozniony) ? '#ffffff' : '#334155',
                     cursor: 'pointer',
                     fontWeight: 'bold',
                     fontSize: '12px'
@@ -224,7 +249,24 @@ export default function ListaObecnosci({ probaId, sekcja }) {
                 </button>
 
                 <button
-                  onClick={() => ustawObecnoscKadra(c.id, false)}
+                  onClick={() => ustawObecnoscKadra(c.id, 'spozniony')}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    border: '1px solid',
+                    borderColor: dek.spozniony === true ? '#f59e0b' : '#cbd5e1',
+                    backgroundColor: dek.spozniony === true ? '#f59e0b' : '#ffffff',
+                    color: dek.spozniony === true ? '#ffffff' : '#334155',
+                    cursor: 'pointer',
+                    fontWeight: 'bold',
+                    fontSize: '12px'
+                  }}
+                >
+                  Spóźniony ⏰
+                </button>
+
+                <button
+                  onClick={() => ustawObecnoscKadra(c.id, 'nieobecny')}
                   style={{
                     padding: '6px 12px',
                     borderRadius: '6px',
