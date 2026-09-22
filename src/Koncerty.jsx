@@ -106,37 +106,39 @@ export default function Koncerty({ profile }) {
     }
   };
 
+  // Niezależne, bezpieczne pobieranie danych (bez polegania na relacjach w bazie)
   const pobierzWszystkichZapisanych = async (listaKoncertow) => {
     try {
       const koncertIds = listaKoncertow.map(k => k.id);
       if (koncertIds.length === 0) return;
 
+      // 1. Pobieramy surowe deklaracje
       const { data: dekData, error: dekErr } = await supabase
         .from('deklaracje_koncerty')
-        .select(`
-          id,
-          id_koncertu,
-          id_uzytkownika,
-          planuje,
-          zakwalifikowany,
-          profiles (
-            id,
-            imie_nazwisko,
-            sekcja,
-            glos,
-            avatar_url
-          )
-        `)
+        .select('*')
         .in('id_koncertu', koncertIds);
 
       if (dekErr) throw dekErr;
 
-      if (dekData) {
+      // 2. Pobieramy wszystkie profile
+      const { data: profData, error: profErr } = await supabase
+        .from('profiles')
+        .select('id, imie_nazwisko, sekcja, glos, avatar_url');
+
+      if (profErr) throw profErr;
+
+      if (dekData && profData) {
+        // Tworzymy mapę profili dla szybkiego wyszukiwania po ID
+        const profileMap = {};
+        profData.forEach(p => {
+          profileMap[p.id] = p;
+        });
+
         const mapaZapisanych = {}; 
         koncertIds.forEach(id => { mapaZapisanych[id] = []; });
         
         dekData.forEach(d => {
-          const prof = Array.isArray(d.profiles) ? d.profiles[0] : d.profiles;
+          const prof = profileMap[d.id_uzytkownika];
           if (prof) {
             mapaZapisanych[d.id_koncertu].push({
               id: d.id,
