@@ -26,6 +26,9 @@ export default function Harmonogram({ profile }) {
   
   const [rozwinieteMiesiace, setRozwinieteMiesiace] = useState({});
 
+  // Nowy stan do zakładek: Nadchodzące / Odbyte
+  const [widok, setWidok] = useState('nadchodzace');
+
   const [dataProby, setDataProby] = useState('');
   const [godzinaProby, setGodzinaProby] = useState('18:00');
   const [sekcja, setSekcja] = useState('balet');
@@ -65,7 +68,6 @@ export default function Harmonogram({ profile }) {
     if (!error && data) {
       const counts = {};
       data.forEach(d => {
-        // Liczymy zarówno 'obecny', 'spozniony', jak i planuje === true
         if (d.status_deklaracji === 'obecny' || d.status_deklaracji === 'spozniony' || (d.status_deklaracji == null && d.planuje === true)) {
           counts[d.id_proby] = (counts[d.id_proby] || 0) + 1;
         }
@@ -231,7 +233,6 @@ export default function Harmonogram({ profile }) {
     else { setEdycjaProbaId(null); pobierzProby(); }
   };
 
-  // Zaktualizowana funkcja deklaracji: obsługuje statusy: 'obecny', 'nieobecny', 'spozniony'
   const zaktualizujDeklaracje = async (probaId, nowyStatus) => {
     const planujeVal = nowyStatus === 'nieobecny' ? false : true;
     const zachowaneUsprawiedliwienie = nowyStatus === 'obecny' ? null : (usprawiedliwienia[probaId] || null);
@@ -276,10 +277,25 @@ export default function Harmonogram({ profile }) {
     setRozwinitaObecnosc(prev => ({ ...prev, [probaId]: !prev[probaId] }));
   };
 
+  // --------------------------------------------------------
+  // LOGIKA PODZIAŁU NA NADCHODZĄCE I ODBYTE PRÓBY
+  // --------------------------------------------------------
+  // Próba przechodzi do archiwum dopiero na następny dzień od godziny 00:00.
+  const dzisiajPoczatek = new Date();
+  dzisiajPoczatek.setHours(0, 0, 0, 0);
+
+  const nadchodzaceProby = proby.filter(p => new Date(p.data_czas) >= dzisiajPoczatek);
+  
+  // Odbyte próby sortujemy malejąco (od najnowszych do najstarszych)
+  const odbyteProby = proby.filter(p => new Date(p.data_czas) < dzisiajPoczatek)
+    .sort((a, b) => new Date(b.data_czas) - new Date(a.data_czas));
+
+  const wyswietlaneProby = widok === 'nadchodzace' ? nadchodzaceProby : odbyteProby;
+
   const aktualnaData = new Date();
   const aktualnyKluczMiesiaca = `${aktualnaData.getFullYear()}-${String(aktualnaData.getMonth()).padStart(2, '0')}`;
 
-  const pogrupowaneProby = proby.reduce((akregator, proba) => {
+  const pogrupowaneProby = wyswietlaneProby.reduce((akregator, proba) => {
     const data = new Date(proba.data_czas);
     const rok = data.getFullYear();
     const miesiacIdx = data.getMonth();
@@ -292,6 +308,11 @@ export default function Harmonogram({ profile }) {
     akregator[klucz].proby.push(proba);
     return akregator;
   }, {});
+
+  // Sortowanie kluczy miesięcy (malejąco dla "Odbyte", rosnąco dla "Nadchodzące")
+  const kluczeMiesiecy = Object.keys(pogrupowaneProby).sort((a, b) => {
+    return widok === 'odbyte' ? b.localeCompare(a) : a.localeCompare(b);
+  });
 
   const przelaczZakladkeMiesiaca = (klucz) => {
     setRozwinieteMiesiace(prev => {
@@ -400,15 +421,27 @@ export default function Harmonogram({ profile }) {
 
       {komunikat && <p style={{ color: komunikat.includes('Błąd') ? '#dc3545' : 'green', marginBottom: '15px', fontWeight: '500' }}>{komunikat}</p>}
 
-      <h3 style={{ fontSize: '16px', color: '#334155', marginBottom: '15px' }}>
-        {profile.rola === 'członek' ? `Lista zaplanowanych prób (${proby.length})` : `Lista wszystkich prób (${proby.length})`}
-      </h3>
+      {/* ZAKŁADKI: NADCHODZĄCE I ODBYTE */}
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px', flexWrap: 'wrap' }}>
+        <button 
+          onClick={() => setWidok('nadchodzace')} 
+          style={{ padding: '8px 16px', backgroundColor: widok === 'nadchodzace' ? '#3b82f6' : '#f8fafc', color: widok === 'nadchodzace' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px' }}
+        >
+          Nadchodzące próby ({nadchodzaceProby.length})
+        </button>
+        <button 
+          onClick={() => setWidok('odbyte')} 
+          style={{ padding: '8px 16px', backgroundColor: widok === 'odbyte' ? '#3b82f6' : '#f8fafc', color: widok === 'odbyte' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px' }}
+        >
+          Odbyte próby ({odbyteProby.length})
+        </button>
+      </div>
       
-      {Object.keys(pogrupowaneProby).length === 0 ? (
-        <p style={{ color: '#718096' }}>Brak zaplanowanych prób.</p>
+      {kluczeMiesiecy.length === 0 ? (
+        <p style={{ color: '#718096' }}>Brak prób w tej zakładce.</p>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-          {Object.keys(pogrupowaneProby).sort().map(kluczMiesiaca => {
+          {kluczeMiesiecy.map(kluczMiesiaca => {
             const grupa = pogrupowaneProby[kluczMiesiaca];
             const isRozwiniety = rozwinieteMiesiace[kluczMiesiaca] ?? (kluczMiesiaca === aktualnyKluczMiesiaca);
 
