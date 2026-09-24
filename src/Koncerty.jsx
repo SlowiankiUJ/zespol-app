@@ -21,8 +21,8 @@ const RenderAvatar = ({ url }) => (
 const sortujOsoby = (lista) => {
   return [...lista].sort((a, b) => {
     const wagaSekcji = { 'balet': 1, 'chór': 2, 'kapela': 3 };
-    const wagaA = wagaSekcji[a.sekcja] || 99;
-    const wagaB = wagaSekcji[b.sekcja] || 99;
+    const wagaA = wagaSekcji[(a.sekcja || '').toLowerCase()] || 99;
+    const wagaB = wagaSekcji[(b.sekcja || '').toLowerCase()] || 99;
     if (wagaA !== wagaB) return wagaA - wagaB;
     
     const wagaGlos = { 'Pani': 1, 'Pan': 2, 'Sopran': 1, 'Alt': 2, 'Tenor': 3, 'Bas': 4 };
@@ -195,7 +195,7 @@ export default function Koncerty({ profile }) {
       
       if (data) {
         const mapa = {};
-        koncertIds.forEach(id => mapa[id] = []);
+        koncertIds.forEach(id => { mapa[id] = []; });
         data.forEach(g => {
           if (mapa[g.id_koncertu]) mapa[g.id_koncertu].push(g);
         });
@@ -249,7 +249,7 @@ export default function Koncerty({ profile }) {
   };
 
   const zaktualizujDeklaracjeKoncertu = async (koncertId, statusPlanuje) => {
-    const { error } = await supabase.from('deklaracje_koncerty').upsert([{ id_koncertu: koncertId, id_uzytkownika: profile.id, planuje: statusPlanuje }], { onConflict: 'id_koncertu, id_uzytkownika' });
+    const { error } = await supabase.from('deklaracje_koncerty').upsert([{ id_koncertu: koncertId, id_uzytkownika: profile.id, planuje: statusPlanuje }], { onConflict: 'id_koncertu,id_uzytkownika' });
     if (!error) { 
       setDeklaracjeKoncertow(prev => ({ ...prev, [koncertId]: statusPlanuje })); 
       pobierzKoncerty(); 
@@ -328,16 +328,16 @@ export default function Koncerty({ profile }) {
     }
   };
 
- const dodajGosciaDoMacierzy = async (koncertId, userId, macierz, grupa) => {
+  const dodajGosciaDoMacierzy = async (koncertId, userId, macierz, grupa) => {
     if (!userId) return;
     
-    // Używamy .upsert() z poprawną składnią dla klienta JS Supabase
+    // Uwaga: brak spacji po przecinkach w onConflict jest wymagany przez PostgREST
     const { error } = await supabase.from('koncert_goscie_macierzy').upsert([{
       id_koncertu: koncertId,
       id_uzytkownika: userId,
       docelowa_macierz: macierz,
       docelowa_grupa: grupa
-    }], { onConflict: 'id_koncertu, id_uzytkownika, docelowa_macierz' });
+    }], { onConflict: 'id_koncertu,id_uzytkownika,docelowa_macierz' });
 
     if (!error) pobierzKoncerty();
     else alert('Błąd: ' + error.message);
@@ -428,11 +428,11 @@ export default function Koncerty({ profile }) {
     XLSX.writeFile(wb, `Koncert_${czystyTytul}.xlsx`);
   };
 
-  const renderMacierzUI = (koncertId, nazwaSekcji, ikonaSekcji, grupy, osoby, programy, wszyscyZakwalifikowani) => {
+  const renderMacierzUI = (koncertId, nazwaSekcji, ikonaSekcji, grupy, osoby, programy, wszyscyChetni) => {
     if (osoby.length === 0 && programy.length === 0) return null;
 
     let isFirstGroupGlobal = true;
-    const wolniDoDodania = wszyscyZakwalifikowani.filter(z => !osoby.some(o => o.id_uzytkownika === z.id_uzytkownika));
+    const wolniDoDodania = wszyscyChetni.filter(z => !osoby.some(o => o.id_uzytkownika === z.id_uzytkownika));
     
     const dropdownOpcje = nazwaSekcji === 'Balet' 
       ? <><option value="">-- Wybierz płeć --</option><option value="Pani">Pani</option><option value="Pan">Pan</option></>
@@ -478,14 +478,14 @@ export default function Koncerty({ profile }) {
                     </tr>
                     
                     {osobyWGrupie.map(osoba => (
-                      <tr key={osoba.id_uzytkownika}>
+                      <tr key={`${osoba.id_uzytkownika}-${osoba.isGosc ? 'gosc' : 'baza'}`}>
                         <td style={{ padding: '8px 10px', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}></td>
                         <td style={{ padding: '8px 10px', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}></td>
                         <td style={{ padding: '8px 10px', borderRight: '2px solid #94a3b8', borderBottom: '1px solid #e2e8f0', color: '#1e293b' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <span>
                               {osoba.imie_nazwisko}
-                              {osoba.isGosc && <span style={{ color: '#8b5cf6', fontSize: '11px', marginLeft: '4px' }}>({osoba.prawdziwaSekcja})</span>}
+                              {osoba.isGosc && <span style={{ color: '#8b5cf6', fontSize: '11px', marginLeft: '4px', fontWeight: '600' }}>({osoba.prawdziwaSekcja})</span>}
                             </span>
                             {osoba.isGosc && canManageProgram && (
                               <button onClick={() => usunGosciaZMacierzy(osoba.id_goscia)} style={{ background: 'none', border: 'none', color: '#ef4444', fontWeight: 'bold', cursor: 'pointer', fontSize: '12px' }} title="Usuń gościa z macierzy">❌</button>
@@ -624,11 +624,33 @@ export default function Koncerty({ profile }) {
 
             const chetni = zapisani.filter(z => z.planuje === true);
             
-            // BEZWZGLĘDNE WYŚWIETLANIE WSZYSTKICH CHĘTNYCH (BEZ FILTROWANIA KWALIFIKACJI)
-            const baletKwalifikowani = sortujOsoby(chetni.filter(z => (z.sekcja || '').toLowerCase() === 'balet'));
-            const chorKwalifikowani = sortujOsoby(chetni.filter(z => (z.sekcja || '').toLowerCase() === 'chór'));
-            const kapelaKwalifikowani = sortujOsoby(chetni.filter(z => (z.sekcja || '').toLowerCase() === 'kapela'));
-            const pozostaliZgloszeni = sortujOsoby(chetni.filter(z => !['balet', 'chór', 'kapela'].includes((z.sekcja || '').toLowerCase())));
+            // Podział chętnych według ich macierzystej sekcji (do zakładki "Skład i zgłoszenia")
+            const bazowyBalet = sortujOsoby(chetni.filter(z => (z.sekcja || '').toLowerCase() === 'balet'));
+            const bazowyChor = sortujOsoby(chetni.filter(z => (z.sekcja || '').toLowerCase() === 'chór'));
+            const bazowaKapela = sortujOsoby(chetni.filter(z => (z.sekcja || '').toLowerCase() === 'kapela'));
+
+            // Mapowanie gości z innych sekcji (do zakładki "Macierz Obsady" i eksportu Excel)
+            const goscieTegoKoncertu = goscieMacierzy[koncert.id] || [];
+            const mapujGosci = (docelowaMacierz) => {
+              return goscieTegoKoncertu
+                .filter(g => g.docelowa_macierz === docelowaMacierz)
+                .map(g => {
+                  const org = chetni.find(z => z.id_uzytkownika === g.id_uzytkownika) || zapisani.find(z => z.id_uzytkownika === g.id_uzytkownika);
+                  if (!org) return null;
+                  return {
+                    ...org,
+                    prawdziwaSekcja: org.sekcja,
+                    glos: g.docelowa_grupa || '',
+                    isGosc: true,
+                    id_goscia: g.id
+                  };
+                })
+                .filter(Boolean);
+            };
+
+            const baletKwalifikowani = sortujOsoby([...bazowyBalet, ...mapujGosci('Balet')]);
+            const chorKwalifikowani = sortujOsoby([...bazowyChor, ...mapujGosci('Chór')]);
+            const kapelaKwalifikowani = sortujOsoby([...bazowaKapela, ...mapujGosci('Kapela')]);
 
             const baletPrograms = programyDlaKoncertu.filter(p => ['baletowy', 'ogólny'].includes(p.typ_ukladu));
             const chorPrograms = programyDlaKoncertu.filter(p => ['chóralny', 'ogólny'].includes(p.typ_ukladu));
@@ -700,10 +722,10 @@ export default function Koncerty({ profile }) {
                           {podzakladka === 'sklad' && (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
                               <div>
-                                <h5 style={{ margin: '0 0 8px 0', fontSize: '15px', color: '#1e293b', borderBottom: '2px solid #8b5cf6', paddingBottom: '4px' }}>🩰 Balet ({baletKwalifikowani.length})</h5>
-                                {baletKwalifikowani.length === 0 ? <p style={{ fontSize: '12px', color: '#94a3b8' }}>Brak zgłoszeń w balecie</p> : (
+                                <h5 style={{ margin: '0 0 8px 0', fontSize: '15px', color: '#1e293b', borderBottom: '2px solid #8b5cf6', paddingBottom: '4px' }}>🩰 Balet ({bazowyBalet.length})</h5>
+                                {bazowyBalet.length === 0 ? <p style={{ fontSize: '12px', color: '#94a3b8' }}>Brak zgłoszeń w balecie</p> : (
                                   <ul style={{ margin: '5px 0 0 15px', paddingLeft: '10px', fontSize: '13px', color: '#334155' }}>
-                                    {baletKwalifikowani.map(osoba => (
+                                    {bazowyBalet.map(osoba => (
                                       <li key={osoba.id_uzytkownika} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', padding: '4px 8px', backgroundColor: '#f0fdf4', borderRadius: '4px' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                           <RenderAvatar url={osoba.avatar_url} />
@@ -721,10 +743,10 @@ export default function Koncerty({ profile }) {
                               </div>
 
                               <div>
-                                <h5 style={{ margin: '0 0 8px 0', fontSize: '15px', color: '#1e293b', borderBottom: '2px solid #d69e2e', paddingBottom: '4px' }}>🎤 Chór ({chorKwalifikowani.length})</h5>
-                                {chorKwalifikowani.length === 0 ? <p style={{ fontSize: '12px', color: '#94a3b8' }}>Brak zgłoszeń w chórze</p> : (
+                                <h5 style={{ margin: '0 0 8px 0', fontSize: '15px', color: '#1e293b', borderBottom: '2px solid #d69e2e', paddingBottom: '4px' }}>🎤 Chór ({bazowyChor.length})</h5>
+                                {bazowyChor.length === 0 ? <p style={{ fontSize: '12px', color: '#94a3b8' }}>Brak zgłoszeń w chórze</p> : (
                                   <ul style={{ margin: '5px 0 0 15px', paddingLeft: '10px', fontSize: '13px', color: '#334155' }}>
-                                    {chorKwalifikowani.map(osoba => (
+                                    {bazowyChor.map(osoba => (
                                       <li key={osoba.id_uzytkownika} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', padding: '4px 8px', backgroundColor: '#fffbeb', borderRadius: '4px' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                           <RenderAvatar url={osoba.avatar_url} />
@@ -742,10 +764,10 @@ export default function Koncerty({ profile }) {
                               </div>
 
                               <div>
-                                <h5 style={{ margin: '0 0 8px 0', fontSize: '15px', color: '#1e293b', borderBottom: '2px solid #3182ce', paddingBottom: '4px' }}>🎻 Kapela ({kapelaKwalifikowani.length})</h5>
-                                {kapelaKwalifikowani.length === 0 ? <p style={{ fontSize: '12px', color: '#94a3b8' }}>Brak zgłoszeń w kapeli</p> : (
+                                <h5 style={{ margin: '0 0 8px 0', fontSize: '15px', color: '#1e293b', borderBottom: '2px solid #3182ce', paddingBottom: '4px' }}>🎻 Kapela ({bazowaKapela.length})</h5>
+                                {bazowaKapela.length === 0 ? <p style={{ fontSize: '12px', color: '#94a3b8' }}>Brak zgłoszeń w kapeli</p> : (
                                   <ul style={{ margin: '5px 0 0 15px', paddingLeft: '10px', fontSize: '13px', color: '#334155' }}>
-                                    {kapelaKwalifikowani.map(osoba => (
+                                    {bazowaKapela.map(osoba => (
                                       <li key={osoba.id_uzytkownika} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', padding: '4px 8px', backgroundColor: '#eff6ff', borderRadius: '4px' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                           <RenderAvatar url={osoba.avatar_url} />
