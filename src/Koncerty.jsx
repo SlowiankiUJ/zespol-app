@@ -330,12 +330,14 @@ export default function Koncerty({ profile }) {
 
  const dodajGosciaDoMacierzy = async (koncertId, userId, macierz, grupa) => {
     if (!userId) return;
+    
+    // Używamy .upsert() z poprawną składnią dla klienta JS Supabase
     const { error } = await supabase.from('koncert_goscie_macierzy').upsert([{
       id_koncertu: koncertId,
       id_uzytkownika: userId,
       docelowa_macierz: macierz,
       docelowa_grupa: grupa
-    }], { onConflict: 'id_koncertu, id_uzytkownika' }); // dopasuj do kolumn unikalnych w bazie, jeśli constraint obejmuje też macierz, dodaj ją również
+    }], { onConflict: 'id_koncertu, id_uzytkownika, docelowa_macierz' });
 
     if (!error) pobierzKoncerty();
     else alert('Błąd: ' + error.message);
